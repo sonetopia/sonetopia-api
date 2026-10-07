@@ -40,4 +40,6 @@ public class AudioResponse {
   private String createdAt;
 
   private String updatedAt;
+
+  private String signedUrl;
 }

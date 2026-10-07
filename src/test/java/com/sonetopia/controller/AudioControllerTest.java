@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -109,6 +110,8 @@ public class AudioControllerTest {
     assertEquals("Test Author", webResponse.getData().getAuthor());
     assertEquals("Test Album", webResponse.getData().getAlbum());
     assertEquals((short)2023, webResponse.getData().getYear());
+
+    System.out.println(webResponse.getData());
 
     List<Audio> audios = audioRepository.findAll();
     assertEquals(1, audios.size());
@@ -224,6 +227,263 @@ public class AudioControllerTest {
         assertNull(webResponse.getData());
         assertNotNull(webResponse.getErrors());
         assertTrue(webResponse.getErrors().contains("Unsupported image cover MIME type"));
+      });
+  }
+
+  @Test
+  void testGetAudioSuccess() throws Exception {
+    MockMultipartFile audioFile = new MockMultipartFile(
+      "audioFile",
+      "test-audio.mp3",
+      "audio/mpeg",
+      "Test audio content".getBytes()
+    );
+
+    mockMvc.perform(
+      multipart("/api/v1/audio")
+        .file(audioFile)
+        .param("title", "Test Audio")
+        .param("author", "Test Author")
+        .param("album", "Test Album")
+        .param("year", "2023")
+      ).andExpectAll(
+        status().isOk()
+      ).andDo(result -> {
+        WebResponse<AudioResponse> webResponse = objectMapper.readValue(result.getResponse().getContentAsString(), new TypeReference<WebResponse<AudioResponse>>() {});
+    
+        assertNotNull(webResponse);
+        assertNotNull(webResponse.getData());
+        UUID audioId = webResponse.getData().getId();
+    
+        mockMvc.perform(get("/api/v1/audio/" + audioId))
+          .andExpectAll(
+            status().isOk()
+          ).andDo(getResult -> {
+            WebResponse<AudioResponse> getWebResponse = objectMapper.readValue(getResult.getResponse().getContentAsString(), new TypeReference<WebResponse<AudioResponse>>() {});
+        
+            assertNotNull(getWebResponse);
+            assertNotNull(getWebResponse.getData());
+            assertEquals(audioId, getWebResponse.getData().getId());
+            assertEquals("Test Audio", getWebResponse.getData().getTitle());
+            assertEquals("Test Author", getWebResponse.getData().getAuthor());
+            assertEquals("Test Album", getWebResponse.getData().getAlbum());
+            assertEquals((short)2023, getWebResponse.getData().getYear());
+
+            assertNotNull(getWebResponse.getData().getSignedUrl());
+          });
+      });
+  }
+
+  @Test
+  void testGetAudioNotFound() throws Exception {
+    UUID nonExistentAudioId = UUID.randomUUID();
+
+    mockMvc.perform(get("/api/v1/audio/" + nonExistentAudioId))
+      .andExpectAll(
+        status().isNotFound()
+      ).andDo(result -> {
+        WebResponse<AudioResponse> webResponse = objectMapper.readValue(result.getResponse().getContentAsString(), new TypeReference<WebResponse<AudioResponse>>() {});
+    
+        assertNotNull(webResponse);
+        assertNull(webResponse.getData());
+        assertNotNull(webResponse.getErrors());
+        assertTrue(webResponse.getErrors().contains("Audio not found"));
+      });
+  }
+
+  @Test
+  void testStreamWithValidSignedUrl() throws Exception {
+    MockMultipartFile audioFile = new MockMultipartFile(
+      "audioFile",
+      "test-audio.mp3",
+      "audio/mpeg",
+      "Test audio content".getBytes()
+    );
+
+    mockMvc.perform(
+      multipart("/api/v1/audio")
+        .file(audioFile)
+        .param("title", "Test Audio")
+        .param("author", "Test Author")
+        .param("album", "Test Album")
+        .param("year", "2023")
+      ).andExpectAll(
+        status().isOk()
+      ).andDo(result -> {
+        WebResponse<AudioResponse> webResponse = objectMapper.readValue(result.getResponse().getContentAsString(), new TypeReference<WebResponse<AudioResponse>>() {});
+    
+        assertNotNull(webResponse);
+        assertNotNull(webResponse.getData());
+        UUID audioId = webResponse.getData().getId();
+    
+        mockMvc.perform(get("/api/v1/audio/" + audioId))
+          .andExpectAll(
+            status().isOk()
+          ).andDo(getResult -> {
+            WebResponse<AudioResponse> getWebResponse = objectMapper.readValue(getResult.getResponse().getContentAsString(), new TypeReference<WebResponse<AudioResponse>>() {});
+        
+            assertNotNull(getWebResponse);
+            assertNotNull(getWebResponse.getData());
+            assertEquals(audioId, getWebResponse.getData().getId());
+            assertNotNull(getWebResponse.getData().getSignedUrl());
+
+            String signedUrl = getWebResponse.getData().getSignedUrl();
+            mockMvc.perform(get(signedUrl))
+              .andExpectAll(
+                status().isOk()
+              ).andDo(streamResult -> {
+                assertNotNull(streamResult.getResponse().getContentAsByteArray());
+                assertEquals("audio/mpeg", streamResult.getResponse().getContentType());
+              });
+          });
+      });
+  }
+
+  @Test
+  void testStreamWithInvalidSignedUrl() throws Exception {
+    MockMultipartFile audioFile = new MockMultipartFile(
+      "audioFile",
+      "test-audio.mp3",
+      "audio/mpeg",
+      "Test audio content".getBytes()
+    );
+
+    mockMvc.perform(
+      multipart("/api/v1/audio")
+        .file(audioFile)
+        .param("title", "Test Audio")
+        .param("author", "Test Author")
+        .param("album", "Test Album")
+        .param("year", "2023")
+      ).andExpectAll(
+        status().isOk()
+      ).andDo(result -> {
+        WebResponse<AudioResponse> webResponse = objectMapper.readValue(result.getResponse().getContentAsString(), new TypeReference<WebResponse<AudioResponse>>() {});
+    
+        assertNotNull(webResponse);
+        assertNotNull(webResponse.getData());
+        UUID audioId = webResponse.getData().getId();
+    
+        mockMvc.perform(get("/api/v1/audio/" + audioId))
+          .andExpectAll(
+            status().isOk()
+          ).andDo(getResult -> {
+            WebResponse<AudioResponse> getWebResponse = objectMapper.readValue(getResult.getResponse().getContentAsString(), new TypeReference<WebResponse<AudioResponse>>() {});
+        
+            assertNotNull(getWebResponse);
+            assertNotNull(getWebResponse.getData());
+            assertEquals(audioId, getWebResponse.getData().getId());
+            assertNotNull(getWebResponse.getData().getSignedUrl());
+
+            String signedUrl = getWebResponse.getData().getSignedUrl();
+            // Simulate expired signed URL by manipulating the expires parameter
+            String expiredSignedUrl = signedUrl.replaceAll("expires=\\d+", "expires=99999999999");
+            mockMvc.perform(get(expiredSignedUrl))
+              .andExpectAll(
+                status().isUnauthorized()
+              ).andDo(streamResult -> {
+                WebResponse<String> errorWebResponse = objectMapper.readValue(streamResult.getResponse().getContentAsString(), new TypeReference<WebResponse<String>>() {});
+                assertNotNull(errorWebResponse);
+                assertNull(errorWebResponse.getData());
+                assertNotNull(errorWebResponse.getErrors());
+                assertTrue(errorWebResponse.getErrors().contains("Invalid or expired signature"));
+              });
+          });
+      });
+  }
+
+  @Test
+  void testStreamWithRangeHeader() throws Exception {
+    MockMultipartFile audioFile = new MockMultipartFile(
+      "audioFile",
+      "test-audio.mp3",
+      "audio/mpeg",
+      "Test audio content".getBytes()
+    );
+
+    mockMvc.perform(
+      multipart("/api/v1/audio")
+        .file(audioFile)
+        .param("title", "Test Audio")
+        .param("author", "Test Author")
+        .param("album", "Test Album")
+        .param("year", "2023")
+      ).andExpectAll(
+        status().isOk()
+      ).andDo(result -> {
+        WebResponse<AudioResponse> webResponse = objectMapper.readValue(result.getResponse().getContentAsString(), new TypeReference<WebResponse<AudioResponse>>() {});
+    
+        assertNotNull(webResponse);
+        assertNotNull(webResponse.getData());
+        UUID audioId = webResponse.getData().getId();
+    
+        mockMvc.perform(get("/api/v1/audio/" + audioId))
+          .andExpectAll(
+            status().isOk()
+          ).andDo(getResult -> {
+            WebResponse<AudioResponse> getWebResponse = objectMapper.readValue(getResult.getResponse().getContentAsString(), new TypeReference<WebResponse<AudioResponse>>() {});
+        
+            assertNotNull(getWebResponse);
+            assertNotNull(getWebResponse.getData());
+            assertEquals(audioId, getWebResponse.getData().getId());
+            assertNotNull(getWebResponse.getData().getSignedUrl());
+
+            String signedUrl = getWebResponse.getData().getSignedUrl();
+            mockMvc.perform(get(signedUrl).header("Range", "bytes=0-4"))
+              .andExpectAll(
+                status().isPartialContent()
+              ).andDo(streamResult -> {
+                assertNotNull(streamResult.getResponse().getContentAsByteArray());
+                assertEquals("audio/mpeg", streamResult.getResponse().getContentType());
+                assertEquals(5, streamResult.getResponse().getContentAsByteArray().length);
+              });
+          });
+      });
+  }
+
+  @Test
+  void testStreamWithInvalidRangeHeader() throws Exception {
+    MockMultipartFile audioFile = new MockMultipartFile(
+      "audioFile",
+      "test-audio.mp3",
+      "audio/mpeg",
+      "Test audio content".getBytes()
+    );
+
+    mockMvc.perform(
+      multipart("/api/v1/audio")
+        .file(audioFile)
+        .param("title", "Test Audio")
+        .param("author", "Test Author")
+        .param("album", "Test Album")
+        .param("year", "2023")
+      ).andExpectAll(
+        status().isOk()
+      ).andDo(result -> {
+        WebResponse<AudioResponse> webResponse = objectMapper.readValue(result.getResponse().getContentAsString(), new TypeReference<WebResponse<AudioResponse>>() {});
+    
+        assertNotNull(webResponse);
+        assertNotNull(webResponse.getData());
+        UUID audioId = webResponse.getData().getId();
+    
+        mockMvc.perform(get("/api/v1/audio/" + audioId))
+          .andExpectAll(
+            status().isOk()
+          ).andDo(getResult -> {
+            WebResponse<AudioResponse> getWebResponse = objectMapper.readValue(getResult.getResponse().getContentAsString(), new TypeReference<WebResponse<AudioResponse>>() {});
+        
+            assertNotNull(getWebResponse);
+            assertNotNull(getWebResponse.getData());
+            assertEquals(audioId, getWebResponse.getData().getId());
+            assertNotNull(getWebResponse.getData().getSignedUrl());
+
+            String signedUrl = getWebResponse.getData().getSignedUrl();
+            mockMvc.perform(get(signedUrl).header("Range", "bytes=1000-2000")) // Invalid range
+              .andExpectAll(
+                status().isRequestedRangeNotSatisfiable(),
+                header().string("Content-Range", "bytes */" + getWebResponse.getData().getFileSize())
+              );
+          });
       });
   }
 }

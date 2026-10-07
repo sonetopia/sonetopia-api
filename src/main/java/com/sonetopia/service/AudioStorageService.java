@@ -18,4 +18,6 @@ public interface AudioStorageService {
   void delete(String storageKey);
 
   String createSignedUrl(UUID id, Duration expiration);
+
+  Boolean validateSignedUrl(UUID id, Long expires, String signature);
 }

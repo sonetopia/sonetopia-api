@@ -1,10 +1,16 @@
 package com.sonetopia.controller;
 
 import java.io.IOException;
+import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.Resource;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.sonetopia.model.WebResponse;
@@ -29,5 +35,18 @@ public class AudioController {
     .orElseThrow();
     AudioResponse audioResponse = audioService.create(request, user);
     return WebResponse.<AudioResponse>builder().data(audioResponse).build();
+  }
+
+  @GetMapping (path = "/api/v1/audio/{audioId}", produces = "application/json")
+  public WebResponse<AudioResponse> get(@PathVariable("audioId") UUID audioId) {
+    User user = userRepository.findByUsername("test")
+    .orElseThrow();
+    AudioResponse audioResponse = audioService.get(audioId, user);
+    return WebResponse.<AudioResponse>builder().data(audioResponse).build();
+  }
+
+  @GetMapping(path = "/api/v1/audio/stream")
+  public ResponseEntity<Resource> stream(@RequestParam("id") UUID audioId, @RequestParam("expires") Long expires, @RequestParam("signature") String signature) {
+    return audioService.stream(audioId, expires, signature);
   }
 }

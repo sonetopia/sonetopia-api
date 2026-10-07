@@ -37,9 +37,6 @@ public class LocalAudioStorageService implements AudioStorageService {
 
   public LocalAudioStorageService(@Value("${spring.storage.audio-path}") String audioPath) {
     this.rootLocation = Paths.get(audioPath).toAbsolutePath().normalize();
-
-    System.out.println("AUDIO PATH PROPERTY = " + audioPath);
-    System.out.println("STORAGE ROOT = " + this.rootLocation);
   }
 
   @Override
@@ -50,13 +47,6 @@ public class LocalAudioStorageService implements AudioStorageService {
     Path destination = rootLocation.resolve(storageKey);
     Files.createDirectories(destination.getParent());
     Files.copy(audioFile.getInputStream(), destination, StandardCopyOption.REPLACE_EXISTING);
-
-    System.out.println("STORING AUDIO");
-    System.out.println("userId = " + userId);
-    System.out.println("audioId = " + audioId);
-    System.out.println("root = " + rootLocation);
-    System.out.println("storageKey = " + storageKey);
-    System.out.println("destination = " + destination);
 
     return storageKey;
   }
@@ -102,12 +92,24 @@ public class LocalAudioStorageService implements AudioStorageService {
     String payload = id + ":" + expirationTime;
     String signature = generateSignature(payload);
 
-    return UriComponentsBuilder.fromPath("/api/audios/stream")
+    return UriComponentsBuilder.fromPath("/api/v1/audio/stream")
         .queryParam("id", audio.getId())
         .queryParam("expires", expirationTime)
         .queryParam("signature", signature)
         .build()
         .toUriString();
+  }
+
+  @Override
+  public Boolean validateSignedUrl(UUID id, Long expires, String signature) {
+    if (Instant.now().getEpochSecond() > expires) {
+      return false;
+    }
+
+    String payload = id + ":" + expires;
+    String expectedSignature = generateSignature(payload);
+
+    return expectedSignature.equals(signature);
   }
 
   private String generateSignature(String payload) {
