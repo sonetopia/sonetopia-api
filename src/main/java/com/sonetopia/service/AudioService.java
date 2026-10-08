@@ -20,6 +20,7 @@ import com.sonetopia.entity.Audio;
 import com.sonetopia.entity.User;
 import com.sonetopia.model.AudioResponse;
 import com.sonetopia.model.CreateAudioRequest;
+import com.sonetopia.model.UpdateAudioRequest;
 import com.sonetopia.repository.AudioRepository;
 
 @Service 
@@ -130,5 +131,48 @@ public class AudioService {
     } catch (IOException e) {
       throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to stream audio", e);
     }
+  }
+
+  @Transactional
+  public AudioResponse update(UUID audioId, UpdateAudioRequest request, User user) throws IOException {
+    Audio audio = audioRepository.findById(audioId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Audio not found"));
+
+    validationService.validate(request);
+
+    audio.setTitle(request.getTitle());
+    audio.setType(request.getType());
+    audio.setAuthor(request.getAuthor());
+    audio.setAlbum(request.getAlbum());
+    audio.setYear(request.getYear());
+    audio.setUpdatedAt(LocalDateTime.now());
+
+    MultipartFile imageCover = request.getImageCover();
+    if (imageCover != null && !imageCover.isEmpty()) {
+      if (audio.getImageCover() != null) {
+        localAudioStorageService.delete(audio.getImageCover());
+      }
+      String imageCoverStorageKey = localAudioStorageService.storeImageCover(
+        user.getId(),
+        audio.getId(),
+        imageCover
+      );
+      audio.setImageCover(imageCoverStorageKey);
+    }
+
+    Audio updatedAudio = audioRepository.save(audio);
+    
+    return toAudioResponse(updatedAudio);
+  }
+
+  @Transactional
+  public void delete(UUID audioId, User user) {
+    Audio audio = audioRepository.findById(audioId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Audio not found"));
+
+    localAudioStorageService.delete(audio.getStorageKey());
+    if (audio.getImageCover() != null) {
+      localAudioStorageService.delete(audio.getImageCover());
+    }
+
+    audioRepository.delete(audio);
   }
 }
