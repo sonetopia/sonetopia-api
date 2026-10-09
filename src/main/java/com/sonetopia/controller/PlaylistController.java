@@ -1,6 +1,7 @@
 package com.sonetopia.controller;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -58,5 +59,13 @@ public class PlaylistController {
     .orElseThrow();
     playlistService.delete(playlistId, user);
     return WebResponse.<UUID>builder().data(playlistId).build();
+  }
+
+  @GetMapping(path = "/api/v1/playlists", produces = "application/json")
+  public WebResponse<List<PlaylistResponse>> list() {
+    User user = userRepository.findByUsername("test")
+    .orElseThrow();
+    List<PlaylistResponse> playlistResponses = playlistService.list(user);
+    return WebResponse.<List<PlaylistResponse>>builder().data(playlistResponses).build();
   }
 }

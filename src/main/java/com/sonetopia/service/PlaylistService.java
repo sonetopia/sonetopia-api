@@ -1,6 +1,7 @@
 package com.sonetopia.service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -77,5 +78,11 @@ public class PlaylistService {
         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Playlist not found"));
 
     playlistRepository.delete(playlist);
+  }
+
+  @Transactional(readOnly = true)
+  public List<PlaylistResponse> list(User user) {
+    List<Playlist> playlists = playlistRepository.findByUser(user);
+    return playlists.stream().map(this::toPlaylistResponse).toList();
   }
 }

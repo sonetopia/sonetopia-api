@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -238,6 +239,39 @@ public class PlaylistControllerTest {
 
       assertNotNull(response.getData());
       assertEquals(playlist.getId(), response.getData());
+    });
+  }
+
+  @Test
+  void testListPlaylistsSuccess() throws Exception {
+    Playlist playlist1 = new Playlist();
+    playlist1.setUser(userRepository.findByUsername("test").orElseThrow());
+    playlist1.setTitle("Playlist 1");
+    playlist1.setCreatedAt(LocalDateTime.now());
+    playlist1.setUpdatedAt(LocalDateTime.now());
+    playlistRepository.save(playlist1);
+
+    Playlist playlist2 = new Playlist();
+    playlist2.setUser(userRepository.findByUsername("test").orElseThrow());
+    playlist2.setTitle("Playlist 2");
+    playlist2.setCreatedAt(LocalDateTime.now());
+    playlist2.setUpdatedAt(LocalDateTime.now());
+    playlistRepository.save(playlist2);
+
+    mockMvc.perform(get("/api/v1/playlists")
+        .contentType("application/json")
+    ).andExpectAll(
+        status().isOk()
+    ).andDo(result -> {
+      WebResponse<List<PlaylistResponse>> response = objectMapper.readValue(
+        result.getResponse().getContentAsString(),
+        new TypeReference<WebResponse<List<PlaylistResponse>>>() {}
+      );
+
+      assertNotNull(response.getData());
+      assertEquals(2, response.getData().size());
+      assertTrue(response.getData().stream().anyMatch(p -> p.getId().equals(playlist1.getId())));
+      assertTrue(response.getData().stream().anyMatch(p -> p.getId().equals(playlist2.getId())));
     });
   }
 }
