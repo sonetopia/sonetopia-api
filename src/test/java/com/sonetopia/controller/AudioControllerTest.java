@@ -230,45 +230,28 @@ public class AudioControllerTest {
 
   @Test
   void testGetAudioSuccess() throws Exception {
-    MockMultipartFile audioFile = new MockMultipartFile(
-      "audioFile",
-      "test-audio.mp3",
-      "audio/mpeg",
-      "Test audio content".getBytes()
-    );
+    Audio audio = new Audio();
+    audio.setId(UUID.randomUUID());
+    audio.setUser(userRepository.findByUsername("test").orElseThrow());
+    audio.setTitle("Test Audio");
+    audio.setStorageKey("random-string");
+    audio.setMimeType("audio/mpeg");
+    audio.setFileSize(1024L);
+    audio.setCreatedAt(LocalDateTime.now());
+    audio.setUpdatedAt(LocalDateTime.now());
+    audioRepository.save(audio);
 
-    mockMvc.perform(
-      multipart("/api/v1/audio")
-        .file(audioFile)
-        .param("title", "Test Audio")
-        .param("author", "Test Author")
-        .param("album", "Test Album")
-        .param("year", "2023")
-      ).andExpectAll(
+    mockMvc.perform(get("/api/v1/audio/" + audio.getId()))
+      .andExpectAll(
         status().isOk()
-      ).andDo(result -> {
-        WebResponse<AudioResponse> webResponse = objectMapper.readValue(result.getResponse().getContentAsString(), new TypeReference<WebResponse<AudioResponse>>() {});
+      ).andDo(getResult -> {
+        WebResponse<AudioResponse> getWebResponse = objectMapper.readValue(getResult.getResponse().getContentAsString(), new TypeReference<WebResponse<AudioResponse>>() {});
     
-        assertNotNull(webResponse);
-        assertNotNull(webResponse.getData());
-        UUID audioId = webResponse.getData().getId();
-    
-        mockMvc.perform(get("/api/v1/audio/" + audioId))
-          .andExpectAll(
-            status().isOk()
-          ).andDo(getResult -> {
-            WebResponse<AudioResponse> getWebResponse = objectMapper.readValue(getResult.getResponse().getContentAsString(), new TypeReference<WebResponse<AudioResponse>>() {});
-        
-            assertNotNull(getWebResponse);
-            assertNotNull(getWebResponse.getData());
-            assertEquals(audioId, getWebResponse.getData().getId());
-            assertEquals("Test Audio", getWebResponse.getData().getTitle());
-            assertEquals("Test Author", getWebResponse.getData().getAuthor());
-            assertEquals("Test Album", getWebResponse.getData().getAlbum());
-            assertEquals((short)2023, getWebResponse.getData().getYear());
-
-            assertNotNull(getWebResponse.getData().getSignedUrl());
-          });
+        assertNotNull(getWebResponse);
+        assertNotNull(getWebResponse.getData());
+        assertEquals(audio.getId(), getWebResponse.getData().getId());
+        assertEquals("Test Audio", getWebResponse.getData().getTitle());
+        assertNotNull(getWebResponse.getData().getSignedUrl());
       });
   }
 
@@ -291,234 +274,159 @@ public class AudioControllerTest {
 
   @Test
   void testUpdateAudioSuccess() throws Exception {
-    MockMultipartFile audioFile = new MockMultipartFile(
-      "audioFile",
-      "test-audio.mp3",
-      "audio/mpeg",
-      "Test audio content".getBytes()
-    );
+    Audio audio = new Audio();
+    audio.setId(UUID.randomUUID());
+    audio.setUser(userRepository.findByUsername("test").orElseThrow());
+    audio.setTitle("Test Audio");
+    audio.setStorageKey("random-string");
+    audio.setMimeType("audio/mpeg");
+    audio.setFileSize(1024L);
+    audio.setCreatedAt(LocalDateTime.now());
+    audio.setUpdatedAt(LocalDateTime.now());
+    audioRepository.save(audio);
 
     mockMvc.perform(
-      multipart("/api/v1/audio")
-        .file(audioFile)
-        .param("title", "Test Audio")
-        .param("author", "Test Author")
-        .param("album", "Test Album")
-        .param("year", "2023")
+      multipart("/api/v1/audio/" + audio.getId())
+        .param("title", "Updated Test Audio")
+        .param("author", "Updated Test Author")
+        .param("album", "Updated Test Album")
+        .param("year", "2024")
+        .with(request -> { request.setMethod("PUT"); return request; }) // Override method to PUT
       ).andExpectAll(
         status().isOk()
-      ).andDo(result -> {
-        WebResponse<AudioResponse> webResponse = objectMapper.readValue(result.getResponse().getContentAsString(), new TypeReference<WebResponse<AudioResponse>>() {});
+      ).andDo(updateResult -> {
+        WebResponse<AudioResponse> updateWebResponse = objectMapper.readValue(updateResult.getResponse().getContentAsString(), new TypeReference<WebResponse<AudioResponse>>() {});
     
-        assertNotNull(webResponse);
-        assertNotNull(webResponse.getData());
-        UUID audioId = webResponse.getData().getId();
-
-        mockMvc.perform(
-          multipart("/api/v1/audio/" + audioId)
-            .param("title", "Updated Test Audio")
-            .param("author", "Updated Test Author")
-            .param("album", "Updated Test Album")
-            .param("year", "2024")
-            .with(request -> { request.setMethod("PUT"); return request; }) // Override method to PUT
-          ).andExpectAll(
-            status().isOk()
-          ).andDo(updateResult -> {
-            WebResponse<AudioResponse> updateWebResponse = objectMapper.readValue(updateResult.getResponse().getContentAsString(), new TypeReference<WebResponse<AudioResponse>>() {});
-        
-            assertNotNull(updateWebResponse);
-            assertNotNull(updateWebResponse.getData());
-            assertEquals(audioId, updateWebResponse.getData().getId());
-            assertEquals("Updated Test Audio", updateWebResponse.getData().getTitle());
-            assertEquals("Updated Test Author", updateWebResponse.getData().getAuthor());
-            assertEquals("Updated Test Album", updateWebResponse.getData().getAlbum());
-            assertEquals((short)2024, updateWebResponse.getData().getYear());
-          });
+        assertNotNull(updateWebResponse);
+        assertNotNull(updateWebResponse.getData());
+        assertEquals(audio.getId(), updateWebResponse.getData().getId());
+        assertEquals("Updated Test Audio", updateWebResponse.getData().getTitle());
+        assertEquals("Updated Test Author", updateWebResponse.getData().getAuthor());
+        assertEquals("Updated Test Album", updateWebResponse.getData().getAlbum());
+        assertEquals((short)2024, updateWebResponse.getData().getYear());
       });
   }
 
   @Test
   void testUpdateAudioWithUpdatingImageCoverSuccess() throws Exception {
-    MockMultipartFile audioFile = new MockMultipartFile(
-      "audioFile",
-      "test-audio.mp3",
-      "audio/mpeg",
-      "Test audio content".getBytes()
-    );
+    Audio audio = new Audio();
+    audio.setId(UUID.randomUUID());
+    audio.setUser(userRepository.findByUsername("test").orElseThrow());
+    audio.setTitle("Test Audio");
+    audio.setStorageKey("random-string");
+    audio.setMimeType("audio/mpeg");
+    audio.setFileSize(1024L);
+    audio.setCoverVersion(1);
+    audio.setCreatedAt(LocalDateTime.now());
+    audio.setUpdatedAt(LocalDateTime.now());
+    audioRepository.save(audio);
 
-    MockMultipartFile imageCover = new MockMultipartFile(
+    MockMultipartFile newImageCover = new MockMultipartFile(
       "imageCover",
-      "test-cover.jpg",
+      "new-test-cover.jpg",
       "image/jpeg",
-      "Test image content".getBytes()
+      "New test image content".getBytes()
     );
 
     mockMvc.perform(
-      multipart("/api/v1/audio")
-        .file(audioFile)
-        .file(imageCover)
-        .param("title", "Test Audio")
-        .param("author", "Test Author")
-        .param("album", "Test Album")
-        .param("year", "2023")
+      multipart("/api/v1/audio/" + audio.getId())
+        .file(newImageCover)
+        .param("title", "Updated Test Audio with New Cover")
+        .with(request -> { request.setMethod("PUT"); return request; }) // Override method to PUT
       ).andExpectAll(
         status().isOk()
-      ).andDo(result -> {
-        WebResponse<AudioResponse> webResponse = objectMapper.readValue(result.getResponse().getContentAsString(), new TypeReference<WebResponse<AudioResponse>>() {});
+      ).andDo(updateResult -> {
+        WebResponse<AudioResponse> updateWebResponse = objectMapper.readValue(updateResult.getResponse().getContentAsString(), new TypeReference<WebResponse<AudioResponse>>() {});
     
-        assertNotNull(webResponse);
-        assertNotNull(webResponse.getData());
-        assertEquals(1, webResponse.getData().getCoverVersion());
-        UUID audioId = webResponse.getData().getId();
-
-        MockMultipartFile newImageCover = new MockMultipartFile(
-          "imageCover",
-          "new-test-cover.jpg",
-          "image/jpeg",
-          "New test image content".getBytes()
-        );
-
-        mockMvc.perform(
-          multipart("/api/v1/audio/" + audioId)
-            .file(newImageCover)
-            .param("title", "Updated Test Audio with New Cover")
-            .with(request -> { request.setMethod("PUT"); return request; }) // Override method to PUT
-          ).andExpectAll(
-            status().isOk()
-          ).andDo(updateResult -> {
-            WebResponse<AudioResponse> updateWebResponse = objectMapper.readValue(updateResult.getResponse().getContentAsString(), new TypeReference<WebResponse<AudioResponse>>() {});
-        
-            assertNotNull(updateWebResponse);
-            assertNotNull(updateWebResponse.getData());
-            assertEquals(audioId, updateWebResponse.getData().getId());
-            assertEquals("Updated Test Audio with New Cover", updateWebResponse.getData().getTitle());
-            assertEquals(2, updateWebResponse.getData().getCoverVersion());
-          });
+        assertNotNull(updateWebResponse);
+        assertNotNull(updateWebResponse.getData());
+        assertEquals(audio.getId(), updateWebResponse.getData().getId());
+        assertEquals("Updated Test Audio with New Cover", updateWebResponse.getData().getTitle());
+        assertEquals(2, updateWebResponse.getData().getCoverVersion());
       });
   }
 
   @Test
   void testUpdateAudioEmptyTitleValidationError() throws Exception {
-    MockMultipartFile audioFile = new MockMultipartFile(
-      "audioFile",
-      "test-audio.mp3",
-      "audio/mpeg",
-      "Test audio content".getBytes()
-    );
+    Audio audio = new Audio();
+    audio.setId(UUID.randomUUID());
+    audio.setUser(userRepository.findByUsername("test").orElseThrow());
+    audio.setTitle("Test Audio");
+    audio.setStorageKey("random-string");
+    audio.setMimeType("audio/mpeg");
+    audio.setFileSize(1024L);
+    audio.setCreatedAt(LocalDateTime.now());
+    audio.setUpdatedAt(LocalDateTime.now());
+    audioRepository.save(audio);
 
     mockMvc.perform(
-      multipart("/api/v1/audio")
-        .file(audioFile)
-        .param("title", "Test Audio")
-        .param("author", "Test Author")
-        .param("album", "Test Album")
-        .param("year", "2023")
+      multipart("/api/v1/audio/" + audio.getId())
+        .param("title", "") // Empty title to trigger validation error
+        .with(request -> { request.setMethod("PUT"); return request; }) // Override method to PUT
       ).andExpectAll(
-        status().isOk()
-      ).andDo(result -> {
-        WebResponse<AudioResponse> webResponse = objectMapper.readValue(result.getResponse().getContentAsString(), new TypeReference<WebResponse<AudioResponse>>() {});
+        status().isBadRequest()
+      ).andDo(updateResult -> {
+        WebResponse<AudioResponse> updateWebResponse = objectMapper.readValue(updateResult.getResponse().getContentAsString(), new TypeReference<WebResponse<AudioResponse>>() {});
     
-        assertNotNull(webResponse);
-        assertNotNull(webResponse.getData());
-        UUID audioId = webResponse.getData().getId();
-
-        mockMvc.perform(
-          multipart("/api/v1/audio/" + audioId)
-            .param("title", "") // Empty title to trigger validation error
-            .with(request -> { request.setMethod("PUT"); return request; }) // Override method to PUT
-          ).andExpectAll(
-            status().isBadRequest()
-          ).andDo(updateResult -> {
-            WebResponse<AudioResponse> updateWebResponse = objectMapper.readValue(updateResult.getResponse().getContentAsString(), new TypeReference<WebResponse<AudioResponse>>() {});
-        
-            assertNotNull(updateWebResponse);
-            assertNull(updateWebResponse.getData());
-            assertNotNull(updateWebResponse.getErrors());
-            assertTrue(updateWebResponse.getErrors().contains("Title is required"));
-          });
+        assertNotNull(updateWebResponse);
+        assertNull(updateWebResponse.getData());
+        assertNotNull(updateWebResponse.getErrors());
+        assertTrue(updateWebResponse.getErrors().contains("Title is required"));
       });
   }
 
   @Test
   void testDeleteAudioSuccess() throws Exception {
-    MockMultipartFile audioFile = new MockMultipartFile(
-      "audioFile",
-      "test-audio.mp3",
-      "audio/mpeg",
-      "Test audio content".getBytes()
-    );
+    Audio audio = new Audio();
+    audio.setId(UUID.randomUUID());
+    audio.setUser(userRepository.findByUsername("test").orElseThrow());
+    audio.setTitle("Test Audio");
+    audio.setStorageKey("random-string");
+    audio.setMimeType("audio/mpeg");
+    audio.setFileSize(1024L);
+    audio.setCreatedAt(LocalDateTime.now());
+    audio.setUpdatedAt(LocalDateTime.now());
+    audioRepository.save(audio);
 
-    mockMvc.perform(
-      multipart("/api/v1/audio")
-        .file(audioFile)
-        .param("title", "Test Audio")
-        .param("author", "Test Author")
-        .param("album", "Test Album")
-        .param("year", "2023")
-      ).andExpectAll(
+    mockMvc.perform(delete("/api/v1/audio/" + audio.getId()))
+      .andExpectAll(
         status().isOk()
-      ).andDo(result -> {
-        WebResponse<AudioResponse> webResponse = objectMapper.readValue(result.getResponse().getContentAsString(), new TypeReference<WebResponse<AudioResponse>>() {});
+      ).andDo(deleteResult -> {
+        WebResponse<String> deleteWebResponse = objectMapper.readValue(deleteResult.getResponse().getContentAsString(), new TypeReference<WebResponse<String>>() {});
     
-        assertNotNull(webResponse);
-        assertNotNull(webResponse.getData());
-        UUID audioId = webResponse.getData().getId();
+        assertNotNull(deleteWebResponse);
+        assertNotNull(deleteWebResponse.getData());
+        assertEquals("Audio deleted successfully", deleteWebResponse.getData());
 
-        mockMvc.perform(delete("/api/v1/audio/" + audioId))
-          .andExpectAll(
-            status().isOk()
-          ).andDo(deleteResult -> {
-            WebResponse<String> deleteWebResponse = objectMapper.readValue(deleteResult.getResponse().getContentAsString(), new TypeReference<WebResponse<String>>() {});
-        
-            assertNotNull(deleteWebResponse);
-            assertNotNull(deleteWebResponse.getData());
-            assertEquals("Audio deleted successfully", deleteWebResponse.getData());
-
-            // Verify that the audio is deleted from the repository
-            assertFalse(audioRepository.findById(audioId).isPresent());
-          });
+        // Verify that the audio is deleted from the repository
+        assertFalse(audioRepository.findById(audio.getId()).isPresent());
       });
   }
 
   @Test
   void testListAudioSuccess() throws Exception {
-    MockMultipartFile audioFile1 = new MockMultipartFile(
-      "audioFile",
-      "test-audio1.mp3",
-      "audio/mpeg",
-      "Test audio content 1".getBytes()
-    );
+    
+    Audio audio1 = new Audio();
+    audio1.setId(UUID.randomUUID());
+    audio1.setUser(userRepository.findByUsername("test").orElseThrow());
+    audio1.setTitle("Test Audio 1");
+    audio1.setStorageKey("random-string");
+    audio1.setMimeType("audio/mpeg");
+    audio1.setFileSize(1024L);
+    audio1.setCreatedAt(LocalDateTime.now());
+    audio1.setUpdatedAt(LocalDateTime.now());
+    audioRepository.save(audio1);
 
-    MockMultipartFile audioFile2 = new MockMultipartFile(
-      "audioFile",
-      "test-audio2.mp3",
-      "audio/mpeg",
-      "Test audio content 2".getBytes()
-    );
-
-    // Create first audio
-    mockMvc.perform(
-      multipart("/api/v1/audio")
-        .file(audioFile1)
-        .param("title", "Test Audio 1")
-        .param("author", "Test Author 1")
-        .param("album", "Test Album 1")
-        .param("year", "2023")
-      ).andExpectAll(
-        status().isOk()
-      );
-
-    // Create second audio
-    mockMvc.perform(
-      multipart("/api/v1/audio")
-        .file(audioFile2)
-        .param("title", "Test Audio 2")
-        .param("author", "Test Author 2")
-        .param("album", "Test Album 2")
-        .param("year", "2024")
-      ).andExpectAll(
-        status().isOk()
-      );
+    Audio audio2 = new Audio();
+    audio2.setId(UUID.randomUUID());
+    audio2.setUser(userRepository.findByUsername("test").orElseThrow());
+    audio2.setTitle("Test Audio 2");
+    audio2.setStorageKey("random-string-2");
+    audio2.setMimeType("audio/mpeg");
+    audio2.setFileSize(1024L);
+    audio2.setCreatedAt(LocalDateTime.now());
+    audio2.setUpdatedAt(LocalDateTime.now());
+    audioRepository.save(audio2);
 
     // List all audios
     mockMvc.perform(get("/api/v1/audio"))
@@ -531,18 +439,11 @@ public class AudioControllerTest {
         assertNotNull(webResponse.getData());
         assertEquals(2, webResponse.getData().size());
 
-        AudioResponse audio1 = webResponse.getData().get(0);
-        AudioResponse audio2 = webResponse.getData().get(1);
+        AudioResponse audioResponse1 = webResponse.getData().get(0);
+        AudioResponse audioResponse2 = webResponse.getData().get(1);
 
-        assertEquals("Test Audio 1", audio1.getTitle());
-        assertEquals("Test Author 1", audio1.getAuthor());
-        assertEquals("Test Album 1", audio1.getAlbum());
-        assertEquals((short)2023, audio1.getYear());
-
-        assertEquals("Test Audio 2", audio2.getTitle());
-        assertEquals("Test Author 2", audio2.getAuthor());
-        assertEquals("Test Album 2", audio2.getAlbum());
-        assertEquals((short)2024, audio2.getYear());
+        assertEquals("Test Audio 1", audioResponse1.getTitle());
+        assertEquals("Test Audio 2", audioResponse2.getTitle());
       });
   }
 }

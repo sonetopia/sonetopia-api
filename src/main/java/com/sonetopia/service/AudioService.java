@@ -54,10 +54,8 @@ public class AudioService {
   public AudioResponse create(CreateAudioRequest request, User user) throws IOException {
     validationService.validate(request);
 
-    String uuid = UUID.randomUUID().toString();
-
     Audio audio = new Audio();
-    audio.setId(UUID.fromString(uuid));
+    audio.setId(UUID.randomUUID());
     audio.setUser(user);
 
     MultipartFile audioFile = request.getAudioFile();
