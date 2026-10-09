@@ -479,4 +479,70 @@ public class AudioControllerTest {
           });
       });
   }
+
+  @Test
+  void testListAudioSuccess() throws Exception {
+    MockMultipartFile audioFile1 = new MockMultipartFile(
+      "audioFile",
+      "test-audio1.mp3",
+      "audio/mpeg",
+      "Test audio content 1".getBytes()
+    );
+
+    MockMultipartFile audioFile2 = new MockMultipartFile(
+      "audioFile",
+      "test-audio2.mp3",
+      "audio/mpeg",
+      "Test audio content 2".getBytes()
+    );
+
+    // Create first audio
+    mockMvc.perform(
+      multipart("/api/v1/audio")
+        .file(audioFile1)
+        .param("title", "Test Audio 1")
+        .param("author", "Test Author 1")
+        .param("album", "Test Album 1")
+        .param("year", "2023")
+      ).andExpectAll(
+        status().isOk()
+      );
+
+    // Create second audio
+    mockMvc.perform(
+      multipart("/api/v1/audio")
+        .file(audioFile2)
+        .param("title", "Test Audio 2")
+        .param("author", "Test Author 2")
+        .param("album", "Test Album 2")
+        .param("year", "2024")
+      ).andExpectAll(
+        status().isOk()
+      );
+
+    // List all audios
+    mockMvc.perform(get("/api/v1/audio"))
+      .andExpectAll(
+        status().isOk()
+      ).andDo(result -> {
+        WebResponse<List<AudioResponse>> webResponse = objectMapper.readValue(result.getResponse().getContentAsString(), new TypeReference<WebResponse<List<AudioResponse>>>() {});
+    
+        assertNotNull(webResponse);
+        assertNotNull(webResponse.getData());
+        assertEquals(2, webResponse.getData().size());
+
+        AudioResponse audio1 = webResponse.getData().get(0);
+        AudioResponse audio2 = webResponse.getData().get(1);
+
+        assertEquals("Test Audio 1", audio1.getTitle());
+        assertEquals("Test Author 1", audio1.getAuthor());
+        assertEquals("Test Album 1", audio1.getAlbum());
+        assertEquals((short)2023, audio1.getYear());
+
+        assertEquals("Test Audio 2", audio2.getTitle());
+        assertEquals("Test Author 2", audio2.getAuthor());
+        assertEquals("Test Album 2", audio2.getAlbum());
+        assertEquals((short)2024, audio2.getYear());
+      });
+  }
 }

@@ -3,6 +3,7 @@ package com.sonetopia.service;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -178,5 +179,12 @@ public class AudioService {
     audioCoverResponse.setSignedUrl(localAudioStorageService.createSignedUrl(audio.getId(), "cover", Duration.ofMinutes(60)));
 
     return audioCoverResponse;
+  }
+
+  @Transactional(readOnly = true)
+  public List<AudioResponse> list(User user) {
+    List<Audio> audioList = audioRepository.findByUser(user);
+    List<AudioResponse> audioResponses = audioList.stream().map(this::toAudioResponse).toList();
+    return audioResponses;
   }
 }
