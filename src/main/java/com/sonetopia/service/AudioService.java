@@ -116,7 +116,7 @@ public class AudioService {
 
   @Transactional(readOnly = true)
   public AudioResponse get(UUID audioId, User user) {
-    Audio audio = audioRepository.findById(audioId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Audio not found"));
+    Audio audio = audioRepository.findByIdAndUser(audioId, user).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Audio not found"));
 
     AudioResponse audioResponse = toAudioResponse(audio);
     audioResponse.setSignedUrl(localAudioStorageService.createSignedUrl(audio.getId(), "audio", Duration.ofMinutes(60)));
@@ -126,7 +126,7 @@ public class AudioService {
 
   @Transactional
   public AudioResponse update(UUID audioId, UpdateAudioRequest request, User user) throws IOException {
-    Audio audio = audioRepository.findById(audioId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Audio not found"));
+    Audio audio = audioRepository.findByIdAndUser(audioId, user).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Audio not found"));
 
     validationService.validate(request);
 
@@ -160,7 +160,7 @@ public class AudioService {
 
   @Transactional
   public void delete(UUID audioId, User user) {
-    Audio audio = audioRepository.findById(audioId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Audio not found"));
+    Audio audio = audioRepository.findByIdAndUser(audioId, user).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Audio not found"));
 
     localAudioStorageService.deleteAudioDirectory(user.getId(), audio.getId());
 
@@ -169,7 +169,7 @@ public class AudioService {
 
   @Transactional(readOnly = true)
   public AudioCoverResponse getCover(UUID audioId, User user) {
-    Audio audio = audioRepository.findById(audioId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Audio not found"));
+    Audio audio = audioRepository.findByIdAndUser(audioId, user).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Audio not found"));
 
     AudioCoverResponse audioCoverResponse = new AudioCoverResponse();
     audioCoverResponse.setId(audio.getId());
