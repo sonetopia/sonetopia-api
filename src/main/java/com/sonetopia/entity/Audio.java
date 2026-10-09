@@ -23,7 +23,7 @@ import lombok.Setter;
 @AllArgsConstructor 
 @NoArgsConstructor 
 @Entity 
-@Table(name = "audios")
+@Table(name = "audio")
 public class Audio {
 
   @Id 

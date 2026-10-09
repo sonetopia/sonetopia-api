@@ -111,11 +111,9 @@ public class AudioControllerTest {
     assertEquals("Test Album", webResponse.getData().getAlbum());
     assertEquals((short)2023, webResponse.getData().getYear());
 
-    System.out.println(webResponse.getData());
-
-    List<Audio> audios = audioRepository.findAll();
-    assertEquals(1, audios.size());
-    Audio savedAudio = audios.get(0);
+    List<Audio> audio = audioRepository.findAll();
+    assertEquals(1, audio.size());
+    Audio savedAudio = audio.get(0);
     assertEquals("Test Audio", savedAudio.getTitle());
     assertEquals("Test Author", savedAudio.getAuthor());
     assertEquals("Test Album", savedAudio.getAlbum());

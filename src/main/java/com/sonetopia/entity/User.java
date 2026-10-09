@@ -47,7 +47,7 @@ public class User {
   private LocalDateTime updatedAt;
 
   @OneToMany(mappedBy = "user")
-  private List<Audio> audios;
+  private List<Audio> audio;
 
   @OneToMany(mappedBy = "user")
   private List<Playlist> playlists;

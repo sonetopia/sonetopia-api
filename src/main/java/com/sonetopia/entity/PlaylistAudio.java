@@ -19,10 +19,10 @@ import lombok.Setter;
 @NoArgsConstructor 
 @Entity 
 @Table(
-  name = "playlist_audios",
+  name = "playlist_audio",
   uniqueConstraints = {
     @UniqueConstraint(
-      name = "uq_playlist_audios_playlist_audio",
+      name = "uq_playlist_audio_playlist_audio",
       columnNames = {"playlist_id", "audio_id"}
     )
   }
