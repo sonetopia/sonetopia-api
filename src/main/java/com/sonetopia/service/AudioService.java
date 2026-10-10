@@ -143,10 +143,7 @@ public class AudioService {
   public void delete(UUID audioId, User user) {
     Audio audio = audioRepository.findById(audioId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Audio not found"));
 
-    localAudioStorageService.delete(audio.getStorageKey());
-    if (audio.getCoverStorageKey() != null) {
-      localAudioStorageService.delete(audio.getCoverStorageKey());
-    }
+    localAudioStorageService.deleteAudioDirectory(user.getId(), audio.getId());
 
     audioRepository.delete(audio);
   }

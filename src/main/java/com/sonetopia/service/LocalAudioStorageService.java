@@ -2,10 +2,13 @@ package com.sonetopia.service;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HexFormat;
@@ -116,6 +119,47 @@ public class LocalAudioStorageService implements AudioStorageService {
     String expectedSignature = generateSignature(payload);
 
     return expectedSignature.equals(signature);
+  }
+
+  public Boolean deleteAudioDirectory(UUID userId, UUID audioId) {
+    Path directory = rootLocation
+      .resolve("users")
+      .resolve(userId.toString())
+      .resolve("audio")
+      .resolve(audioId.toString())
+      .normalize();
+
+    if (!directory.startsWith(rootLocation.normalize())) {
+      throw new IllegalArgumentException("Invalid directory path");
+    }
+
+    if (!Files.exists(directory)) {
+      return false;
+    }
+
+    try {
+      Files.walkFileTree(directory, new SimpleFileVisitor<>() {
+        @Override
+        public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+          Files.delete(file);
+          return FileVisitResult.CONTINUE;
+        }
+
+        @Override
+        public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+          if (exc != null) {
+            throw exc;
+          }
+
+          Files.delete(dir);
+          return FileVisitResult.CONTINUE;
+        }
+      });
+
+      return true;
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to delete audio directory: " + directory, e);
+    }
   }
 
   private String generateSignature(String payload) {
