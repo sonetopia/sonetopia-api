@@ -50,7 +50,10 @@ public class AudioService {
   public AudioResponse create(CreateAudioRequest request, User user) throws IOException {
     validationService.validate(request);
 
+    String uuid = UUID.randomUUID().toString();
+
     Audio audio = new Audio();
+    audio.setId(UUID.fromString(uuid));
     audio.setUser(user);
 
     MultipartFile audioFile = request.getAudioFile();
@@ -67,39 +70,36 @@ public class AudioService {
     audio.setMimeType(audioFile.getContentType());
     audio.setFileSize(audioFile.getSize());
 
-    // Save the audio entity to the database
-    Audio savedAudio = audioRepository.save(audio);
-
     try {
       String audioStorageKey = localAudioStorageService.storeAudio(
         user.getId(),
-        savedAudio.getId(),
+        audio.getId(),
         audioFile
       );
-      savedAudio.setStorageKey(audioStorageKey);
+      audio.setStorageKey(audioStorageKey);
   
       MultipartFile imageCover = request.getImageCover();
       if (imageCover != null && !imageCover.isEmpty()) {
         String imageCoverStorageKey = localAudioStorageService.storeImageCover(
           user.getId(),
-          savedAudio.getId(),
+          audio.getId(),
           imageCover
         );
-        savedAudio.setCoverMimeType(imageCover.getContentType());
-        savedAudio.setCoverFileSize(imageCover.getSize());
-        savedAudio.setCoverVersion(1);
-        savedAudio.setCoverStorageKey(imageCoverStorageKey);
+        audio.setCoverMimeType(imageCover.getContentType());
+        audio.setCoverFileSize(imageCover.getSize());
+        audio.setCoverVersion(1);
+        audio.setCoverStorageKey(imageCoverStorageKey);
       }
   
-      audioRepository.save(savedAudio);
+      audioRepository.save(audio);
   
-      return toAudioResponse(savedAudio);
+      return toAudioResponse(audio);
     } catch (IOException | RuntimeException e) {
       // Roll back filesystem changes
       try {
           localAudioStorageService.deleteAudioDirectory(
               user.getId(),
-              savedAudio.getId()
+              audio.getId()
           );
       } catch (RuntimeException cleanupException) {
           // Preserve the original exception

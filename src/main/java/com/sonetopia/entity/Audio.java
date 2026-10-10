@@ -4,8 +4,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
-import org.hibernate.annotations.UuidGenerator;
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -27,7 +25,6 @@ import lombok.Setter;
 public class Audio {
 
   @Id 
-  @UuidGenerator 
   private UUID id;
 
   @ManyToOne
