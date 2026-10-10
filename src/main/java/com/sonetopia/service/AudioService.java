@@ -41,7 +41,6 @@ public class AudioService {
         .album(audio.getAlbum())
         .year(audio.getYear())
         .coverVersion(audio.getCoverVersion())
-        .storageKey(audio.getStorageKey())
         .mimeType(audio.getMimeType())
         .fileSize(audio.getFileSize())
         .build();

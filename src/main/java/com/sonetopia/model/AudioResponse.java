@@ -27,8 +27,6 @@ public class AudioResponse {
 
   private Integer coverVersion;
 
-  private String storageKey;
-
   private String mimeType;
 
   private Long fileSize;

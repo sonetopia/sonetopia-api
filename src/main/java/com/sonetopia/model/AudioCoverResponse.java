@@ -15,8 +15,6 @@ public class AudioCoverResponse {
 
   private UUID id;
 
-  private String storageKey;
-
   private String mimeType;
 
   private Long fileSize;
