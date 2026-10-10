@@ -84,15 +84,21 @@ public class LocalAudioStorageService implements AudioStorageService {
   }
 
   @Override
-  public String createSignedUrl(UUID id, Duration expiration) {
+  public String createSignedUrl(UUID id, String type, Duration expiration) {
+    if (!type.equals("audio") && !type.equals("cover")) {
+      throw new IllegalArgumentException("Invalid type. Must be 'audio' or 'cover'.");
+    }
+
     Audio audio = audioRepository.findById(id).orElseThrow(() -> new RuntimeException("Audio not found"));
     
     Long expirationTime = Instant.now().plus(expiration).getEpochSecond();
 
-    String payload = id + ":" + expirationTime;
+    String payload = id + ":" + type + ":" + expirationTime;
     String signature = generateSignature(payload);
 
-    return UriComponentsBuilder.fromPath("/api/v1/audio/stream")
+    String basePath = type.equals("audio") ? "/api/v1/media/audio" : "/api/v1/media/cover";
+
+    return UriComponentsBuilder.fromPath(basePath)
         .queryParam("id", audio.getId())
         .queryParam("expires", expirationTime)
         .queryParam("signature", signature)
@@ -101,12 +107,12 @@ public class LocalAudioStorageService implements AudioStorageService {
   }
 
   @Override
-  public Boolean validateSignedUrl(UUID id, Long expires, String signature) {
+  public Boolean validateSignedUrl(UUID id, String type, Long expires, String signature) {
     if (Instant.now().getEpochSecond() > expires) {
       return false;
     }
 
-    String payload = id + ":" + expires;
+    String payload = id + ":" + type + ":" + expires;
     String expectedSignature = generateSignature(payload);
 
     return expectedSignature.equals(signature);

@@ -25,13 +25,11 @@ public class AudioResponse {
 
   private Short year;
 
-  private String imageCover;
+  private Integer coverVersion;
 
   private String storageKey;
 
   private String mimeType;
-
-  private String fileExtension;
 
   private Long fileSize;
 

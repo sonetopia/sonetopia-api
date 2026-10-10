@@ -6,19 +6,16 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.sonetopia.entity.Audio;
 import com.sonetopia.entity.User;
 import com.sonetopia.model.AudioResponse;
+import com.sonetopia.model.AudioCoverResponse;
 import com.sonetopia.model.CreateAudioRequest;
 import com.sonetopia.model.UpdateAudioRequest;
 import com.sonetopia.repository.AudioRepository;
@@ -43,10 +40,9 @@ public class AudioService {
         .author(audio.getAuthor())
         .album(audio.getAlbum())
         .year(audio.getYear())
-        .imageCover(audio.getImageCover())
+        .coverVersion(audio.getCoverVersion())
         .storageKey(audio.getStorageKey())
         .mimeType(audio.getMimeType())
-        .fileExtension(audio.getFileExtension())
         .fileSize(audio.getFileSize())
         .build();
   }
@@ -72,11 +68,6 @@ public class AudioService {
     audio.setMimeType(audioFile.getContentType());
     audio.setFileSize(audioFile.getSize());
 
-    String originalFilename = audioFile.getOriginalFilename();
-    String exntension = originalFilename.substring(originalFilename.lastIndexOf(".") + 1).toLowerCase();
-
-    audio.setFileExtension(exntension);
-
     // Save the audio entity to the database
     Audio savedAudio = audioRepository.save(audio);
     
@@ -94,7 +85,10 @@ public class AudioService {
         savedAudio.getId(),
         imageCover
       );
-      savedAudio.setImageCover(imageCoverStorageKey);
+      savedAudio.setCoverMimeType(imageCover.getContentType());
+      savedAudio.setCoverFileSize(imageCover.getSize());
+      savedAudio.setCoverVersion(1);
+      savedAudio.setCoverStorageKey(imageCoverStorageKey);
     }
 
     audioRepository.save(savedAudio);
@@ -107,30 +101,9 @@ public class AudioService {
     Audio audio = audioRepository.findById(audioId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Audio not found"));
 
     AudioResponse audioResponse = toAudioResponse(audio);
-    audioResponse.setSignedUrl(localAudioStorageService.createSignedUrl(audio.getId(), Duration.ofMinutes(60)));
+    audioResponse.setSignedUrl(localAudioStorageService.createSignedUrl(audio.getId(), "audio", Duration.ofMinutes(60)));
     
     return audioResponse;
-  }
-
-  @Transactional(readOnly = true)
-  public ResponseEntity<Resource> stream(@RequestParam("id") UUID audioId, @RequestParam("expires") Long expires, @RequestParam("signature") String signature) {
-    Audio audio = audioRepository.findById(audioId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Audio not found"));
-
-    if (!localAudioStorageService.validateSignedUrl(audioId, expires, signature)) {
-      throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid or expired signature");
-    }
-
-    Resource audioResource = localAudioStorageService.load(audio.getStorageKey());
-    try {
-      return ResponseEntity.ok()
-          .header(HttpHeaders.CONTENT_TYPE, audio.getMimeType())
-          .header(HttpHeaders.ACCEPT_RANGES, "bytes")
-          .contentLength(audioResource.contentLength())
-          .body(audioResource);
-      
-    } catch (IOException e) {
-      throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to stream audio", e);
-    }
   }
 
   @Transactional
@@ -148,15 +121,18 @@ public class AudioService {
 
     MultipartFile imageCover = request.getImageCover();
     if (imageCover != null && !imageCover.isEmpty()) {
-      if (audio.getImageCover() != null) {
-        localAudioStorageService.delete(audio.getImageCover());
+      if (audio.getCoverStorageKey() != null) {
+        localAudioStorageService.delete(audio.getCoverStorageKey());
       }
       String imageCoverStorageKey = localAudioStorageService.storeImageCover(
         user.getId(),
         audio.getId(),
         imageCover
       );
-      audio.setImageCover(imageCoverStorageKey);
+      audio.setCoverMimeType(imageCover.getContentType());
+      audio.setCoverFileSize(imageCover.getSize());
+      audio.setCoverVersion(audio.getCoverVersion() != null ? audio.getCoverVersion() + 1 : 1);
+      audio.setCoverStorageKey(imageCoverStorageKey);
     }
 
     Audio updatedAudio = audioRepository.save(audio);
@@ -169,10 +145,24 @@ public class AudioService {
     Audio audio = audioRepository.findById(audioId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Audio not found"));
 
     localAudioStorageService.delete(audio.getStorageKey());
-    if (audio.getImageCover() != null) {
-      localAudioStorageService.delete(audio.getImageCover());
+    if (audio.getCoverStorageKey() != null) {
+      localAudioStorageService.delete(audio.getCoverStorageKey());
     }
 
     audioRepository.delete(audio);
+  }
+
+  @Transactional(readOnly = true)
+  public AudioCoverResponse getCover(UUID audioId, User user) {
+    Audio audio = audioRepository.findById(audioId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Audio not found"));
+
+    AudioCoverResponse audioCoverResponse = new AudioCoverResponse();
+    audioCoverResponse.setId(audio.getId());
+    audioCoverResponse.setCoverVersion(audio.getCoverVersion());
+    audioCoverResponse.setMimeType(audio.getCoverMimeType());
+    audioCoverResponse.setFileSize(audio.getCoverFileSize());
+    audioCoverResponse.setSignedUrl(localAudioStorageService.createSignedUrl(audio.getId(), "cover", Duration.ofMinutes(60)));
+
+    return audioCoverResponse;
   }
 }

@@ -44,17 +44,23 @@ public class Audio {
   
   private Short year;
   
-  @Column(name = "image_cover")
-  private String imageCover;
-  
+  @Column(name = "cover_storage_key")
+  private String coverStorageKey;
+
+  @Column(name = "cover_mime_type")
+  private String coverMimeType;
+
+  @Column(name = "cover_file_size")
+  private Long coverFileSize;
+
+  @Column(name = "cover_version")
+  private Integer coverVersion = 0;
+
   @Column(name = "storage_key")
   private String storageKey;
   
   @Column(name = "mime_type")
   private String mimeType;
-  
-  @Column(name = "file_extension")
-  private String fileExtension;
   
   @Column(name = "file_size")
   private Long fileSize;

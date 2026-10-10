@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.sonetopia.model.WebResponse;
 import com.sonetopia.entity.User;
+import com.sonetopia.model.AudioCoverResponse;
 import com.sonetopia.model.AudioResponse;
 import com.sonetopia.model.CreateAudioRequest;
 import com.sonetopia.model.UpdateAudioRequest;
@@ -48,11 +49,6 @@ public class AudioController {
     return WebResponse.<AudioResponse>builder().data(audioResponse).build();
   }
 
-  @GetMapping(path = "/api/v1/audio/stream")
-  public ResponseEntity<Resource> stream(@RequestParam("id") UUID audioId, @RequestParam("expires") Long expires, @RequestParam("signature") String signature) {
-    return audioService.stream(audioId, expires, signature);
-  }
-
   @PutMapping(path = "/api/v1/audio/{audioId}", consumes = "multipart/form-data", produces = "application/json")
   public WebResponse<AudioResponse> update(@PathVariable("audioId") UUID audioId, @ModelAttribute UpdateAudioRequest request) throws IOException {
     User user = userRepository.findByUsername("test")
@@ -67,5 +63,13 @@ public class AudioController {
     .orElseThrow();
     audioService.delete(audioId, user);
     return WebResponse.<String>builder().data("Audio deleted successfully").build();
+  }
+
+  @GetMapping (path = "/api/v1/audio/{audioId}/cover", produces = "application/json")
+  public WebResponse<AudioCoverResponse> getCover(@PathVariable("audioId") UUID audioId) {
+    User user = userRepository.findByUsername("test")
+    .orElseThrow();
+    AudioCoverResponse audioCoverResponse = audioService.getCover(audioId, user);
+    return WebResponse.<AudioCoverResponse>builder().data(audioCoverResponse).build();
   }
 }
