@@ -46,7 +46,7 @@ public class AudioService {
         .build();
   }
 
-  @Transactional 
+  @Transactional(rollbackFor = {IOException.class, RuntimeException.class})
   public AudioResponse create(CreateAudioRequest request, User user) throws IOException {
     validationService.validate(request);
 
@@ -69,30 +69,45 @@ public class AudioService {
 
     // Save the audio entity to the database
     Audio savedAudio = audioRepository.save(audio);
-    
-    String audioStorageKey = localAudioStorageService.storeAudio(
-      user.getId(),
-      savedAudio.getId(),
-      audioFile
-    );
-    savedAudio.setStorageKey(audioStorageKey);
 
-    MultipartFile imageCover = request.getImageCover();
-    if (imageCover != null && !imageCover.isEmpty()) {
-      String imageCoverStorageKey = localAudioStorageService.storeImageCover(
+    try {
+      String audioStorageKey = localAudioStorageService.storeAudio(
         user.getId(),
         savedAudio.getId(),
-        imageCover
+        audioFile
       );
-      savedAudio.setCoverMimeType(imageCover.getContentType());
-      savedAudio.setCoverFileSize(imageCover.getSize());
-      savedAudio.setCoverVersion(1);
-      savedAudio.setCoverStorageKey(imageCoverStorageKey);
+      savedAudio.setStorageKey(audioStorageKey);
+  
+      MultipartFile imageCover = request.getImageCover();
+      if (imageCover != null && !imageCover.isEmpty()) {
+        String imageCoverStorageKey = localAudioStorageService.storeImageCover(
+          user.getId(),
+          savedAudio.getId(),
+          imageCover
+        );
+        savedAudio.setCoverMimeType(imageCover.getContentType());
+        savedAudio.setCoverFileSize(imageCover.getSize());
+        savedAudio.setCoverVersion(1);
+        savedAudio.setCoverStorageKey(imageCoverStorageKey);
+      }
+  
+      audioRepository.save(savedAudio);
+  
+      return toAudioResponse(savedAudio);
+    } catch (IOException | RuntimeException e) {
+      // Roll back filesystem changes
+      try {
+          localAudioStorageService.deleteAudioDirectory(
+              user.getId(),
+              savedAudio.getId()
+          );
+      } catch (RuntimeException cleanupException) {
+          // Preserve the original exception
+          e.addSuppressed(cleanupException);
+      }
+
+      throw e;
     }
-
-    audioRepository.save(savedAudio);
-
-    return toAudioResponse(savedAudio);
   }
 
   @Transactional(readOnly = true)
