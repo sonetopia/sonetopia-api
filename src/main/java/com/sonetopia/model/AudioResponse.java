@@ -1,5 +1,6 @@
 package com.sonetopia.model;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 import lombok.AllArgsConstructor;
@@ -33,9 +34,9 @@ public class AudioResponse {
 
   private Integer duration;
 
-  private String createdAt;
+  private LocalDateTime createdAt;
 
-  private String updatedAt;
+  private LocalDateTime updatedAt;
 
   private String signedUrl;
 }

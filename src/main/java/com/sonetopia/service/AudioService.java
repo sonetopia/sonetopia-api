@@ -43,6 +43,9 @@ public class AudioService {
         .coverVersion(audio.getCoverVersion())
         .mimeType(audio.getMimeType())
         .fileSize(audio.getFileSize())
+        .duration(audio.getDuration())
+        .createdAt(audio.getCreatedAt())
+        .updatedAt(audio.getUpdatedAt())
         .build();
   }
 
