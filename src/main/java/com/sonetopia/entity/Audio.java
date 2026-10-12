@@ -71,5 +71,5 @@ public class Audio {
   private LocalDateTime updatedAt;
   
   @OneToMany(mappedBy = "audio")
-  private List<PlaylistAudio> playlistAudios;
+  private List<PlaylistAudio> playlistAudio;
 }
