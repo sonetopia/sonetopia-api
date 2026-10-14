@@ -36,7 +36,8 @@ import tools.jackson.databind.ObjectMapper;
     "spring.storage.audio-path=C:/projects/sonetopia",
     "spring.storage.signed-url-secret=sonetopia-very-secret-key-from-microsoft",
     "spring.servlet.multipart.max-file-size=50MB",
-    "spring.servlet.multipart.max-request-size=55MB"
+    "spring.servlet.multipart.max-request-size=55MB",
+    "spring.cors.allowed-origins=http://localhost:5173,http://localhost:5174"
   }
 )
 @AutoConfigureMockMvc 
