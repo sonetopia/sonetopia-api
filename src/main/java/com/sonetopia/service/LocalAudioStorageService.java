@@ -20,6 +20,7 @@ import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
+import org.springframework.core.io.UrlResource;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -47,9 +48,13 @@ public class LocalAudioStorageService implements AudioStorageService {
 
     String extension = getExtension(audioFile.getOriginalFilename());
     String storageKey = "users/" + userId + "/audio/" + audioId + "/audio." + extension;
-    Path destination = rootLocation.resolve(storageKey);
+    Path destination = resolveStorageKey(storageKey);
     Files.createDirectories(destination.getParent());
-    Files.copy(audioFile.getInputStream(), destination, StandardCopyOption.REPLACE_EXISTING);
+    try (var inputStream = audioFile.getInputStream()) {
+      Files.copy(inputStream, destination, StandardCopyOption.REPLACE_EXISTING);
+    } catch (Exception e) {
+      throw new IOException("Failed to store audio file", e);
+    }
 
     return storageKey;
   }
@@ -59,18 +64,22 @@ public class LocalAudioStorageService implements AudioStorageService {
 
     String extension = getExtension(imageCover.getOriginalFilename());
     String storageKey = "users/" + userId + "/audio/" + audioId + "/cover." + extension;
-    Path destination = rootLocation.resolve(storageKey);
+    Path destination = resolveStorageKey(storageKey);
     Files.createDirectories(destination.getParent());
-    Files.copy(imageCover.getInputStream(), destination, StandardCopyOption.REPLACE_EXISTING);
+    try (var inputStream = imageCover.getInputStream()) {
+      Files.copy(inputStream, destination, StandardCopyOption.REPLACE_EXISTING);
+    } catch (Exception e) {
+      throw new IOException("Failed to store image cover", e);
+    }
 
     return storageKey;
   }
 
   @Override 
   public Resource load(String storageKey) {
-    Path filePath = rootLocation.resolve(storageKey);
+    Path filePath = resolveStorageKey(storageKey);
     try {
-      return new org.springframework.core.io.UrlResource(filePath.toUri());
+      return new UrlResource(filePath.toUri());
     } catch (IOException e) {
       throw new RuntimeException("Failed to load file: " + storageKey, e);
     }
@@ -78,7 +87,7 @@ public class LocalAudioStorageService implements AudioStorageService {
 
   @Override
   public void delete(String storageKey) {
-    Path filePath = rootLocation.resolve(storageKey);
+    Path filePath = resolveStorageKey(storageKey);
     try {
       Files.deleteIfExists(filePath);
     } catch (IOException e) {
@@ -160,6 +169,18 @@ public class LocalAudioStorageService implements AudioStorageService {
     } catch (IOException e) {
       throw new RuntimeException("Failed to delete audio directory: " + directory, e);
     }
+  }
+
+  public Path resolveStorageKey(String storageKey) {
+    if (storageKey == null || storageKey.isEmpty()) {
+      throw new IllegalArgumentException("Storage key must not be empty");
+    }
+
+    Path filePath = rootLocation.resolve(storageKey).normalize();
+    if (!filePath.startsWith(rootLocation)) {
+      throw new IllegalArgumentException("Invalid storage key");
+    }
+    return filePath;
   }
 
   private String generateSignature(String payload) {

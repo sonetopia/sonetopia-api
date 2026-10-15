@@ -5,11 +5,13 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+import java.io.InputStream;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -74,12 +76,17 @@ public class MediaControllerTest {
 
   @Test
   void testGetAudioMediaWithValidSignedUrl() throws Exception {
-    MockMultipartFile audioFile = new MockMultipartFile(
-      "audioFile",
-      "test-audio.mp3",
-      "audio/mpeg",
-      "Test audio content".getBytes()
-    );
+    MockMultipartFile audioFile;
+    try (InputStream inputStream = new ClassPathResource(
+      "audio/sempurna.mp3"
+    ).getInputStream()) {
+      audioFile = new MockMultipartFile(
+        "audioFile",
+        "sempurna.mp3",
+        "audio/mpeg",
+        inputStream
+      );
+    }
 
     mockMvc.perform(
       multipart("/api/v1/audio")
@@ -122,12 +129,17 @@ public class MediaControllerTest {
 
   @Test
   void testGetAudioMediaWithInvalidSignedUrl() throws Exception {
-    MockMultipartFile audioFile = new MockMultipartFile(
-      "audioFile",
-      "test-audio.mp3",
-      "audio/mpeg",
-      "Test audio content".getBytes()
-    );
+    MockMultipartFile audioFile;
+    try (InputStream inputStream = new ClassPathResource(
+      "audio/sempurna.mp3"
+    ).getInputStream()) {
+      audioFile = new MockMultipartFile(
+        "audioFile",
+        "sempurna.mp3",
+        "audio/mpeg",
+        inputStream
+      );
+    }
 
     mockMvc.perform(
       multipart("/api/v1/audio")
@@ -175,12 +187,17 @@ public class MediaControllerTest {
 
   @Test
   void testGetAudioMediaWithRangeHeader() throws Exception {
-    MockMultipartFile audioFile = new MockMultipartFile(
-      "audioFile",
-      "test-audio.mp3",
-      "audio/mpeg",
-      "Test audio content".getBytes()
-    );
+    MockMultipartFile audioFile;
+    try (InputStream inputStream = new ClassPathResource(
+      "audio/sempurna.mp3"
+    ).getInputStream()) {
+      audioFile = new MockMultipartFile(
+        "audioFile",
+        "sempurna.mp3",
+        "audio/mpeg",
+        inputStream
+      );
+    }
 
     mockMvc.perform(
       multipart("/api/v1/audio")
@@ -224,12 +241,17 @@ public class MediaControllerTest {
 
   @Test
   void testGetAudioMediaWithInvalidRangeHeader() throws Exception {
-    MockMultipartFile audioFile = new MockMultipartFile(
-      "audioFile",
-      "test-audio.mp3",
-      "audio/mpeg",
-      "Test audio content".getBytes()
-    );
+    MockMultipartFile audioFile;
+    try (InputStream inputStream = new ClassPathResource(
+      "audio/sempurna.mp3"
+    ).getInputStream()) {
+      audioFile = new MockMultipartFile(
+        "audioFile",
+        "sempurna.mp3",
+        "audio/mpeg",
+        inputStream
+      );
+    }
 
     mockMvc.perform(
       multipart("/api/v1/audio")
@@ -259,7 +281,7 @@ public class MediaControllerTest {
             assertNotNull(getWebResponse.getData().getSignedUrl());
 
             String signedUrl = getWebResponse.getData().getSignedUrl();
-            mockMvc.perform(get(signedUrl).header("Range", "bytes=1000-2000")) // Invalid range
+            mockMvc.perform(get(signedUrl).header("Range", "bytes=999999-9999999")) // Invalid range
               .andExpectAll(
                 status().isRequestedRangeNotSatisfiable(),
                 header().string("Content-Range", "bytes */" + getWebResponse.getData().getFileSize())
@@ -270,12 +292,17 @@ public class MediaControllerTest {
 
   @Test 
   void testGetImageCoverMediaWithValidSignedUrl() throws Exception {
-    MockMultipartFile audioFile = new MockMultipartFile(
-      "audioFile",
-      "test-audio.mp3",
-      "audio/mpeg",
-      "Test audio content".getBytes()
-    );
+    MockMultipartFile audioFile;
+    try (InputStream inputStream = new ClassPathResource(
+      "audio/sempurna.mp3"
+    ).getInputStream()) {
+      audioFile = new MockMultipartFile(
+        "audioFile",
+        "sempurna.mp3",
+        "audio/mpeg",
+        inputStream
+      );
+    }
 
     MockMultipartFile imageCover = new MockMultipartFile(
       "imageCover",
@@ -326,12 +353,17 @@ public class MediaControllerTest {
 
   @Test
   void testGetImageCoverMediaWithInvalidSignedUrl() throws Exception {
-    MockMultipartFile audioFile = new MockMultipartFile(
-      "audioFile",
-      "test-audio.mp3",
-      "audio/mpeg",
-      "Test audio content".getBytes()
-    );
+    MockMultipartFile audioFile;
+    try (InputStream inputStream = new ClassPathResource(
+      "audio/sempurna.mp3"
+    ).getInputStream()) {
+      audioFile = new MockMultipartFile(
+        "audioFile",
+        "sempurna.mp3",
+        "audio/mpeg",
+        inputStream
+      );
+    }
 
     MockMultipartFile imageCover = new MockMultipartFile(
       "imageCover",

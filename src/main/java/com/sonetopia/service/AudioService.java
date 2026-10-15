@@ -1,6 +1,7 @@
 package com.sonetopia.service;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -33,6 +34,9 @@ public class AudioService {
   @Autowired
   private LocalAudioStorageService localAudioStorageService;
 
+  @Autowired
+  private AudioMetadataService audioMetadataService;
+
   private AudioResponse toAudioResponse(Audio audio) {
     return AudioResponse.builder()
         .id(audio.getId())
@@ -59,7 +63,6 @@ public class AudioService {
     audio.setUser(user);
 
     MultipartFile audioFile = request.getAudioFile();
-    audio.setStorageKey("temp"); // Temporary storage key, will be updated after storing the audio file
     
     audio.setTitle(request.getTitle());
     audio.setType(request.getType());
@@ -79,6 +82,9 @@ public class AudioService {
         audioFile
       );
       audio.setStorageKey(audioStorageKey);
+
+      Path audioPath = localAudioStorageService.resolveStorageKey(audioStorageKey);
+      audio.setDuration(audioMetadataService.getDurationInSeconds(audioPath));
   
       MultipartFile imageCover = request.getImageCover();
       if (imageCover != null && !imageCover.isEmpty()) {

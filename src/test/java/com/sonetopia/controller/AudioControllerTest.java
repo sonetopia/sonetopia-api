@@ -5,11 +5,13 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+import java.io.InputStream;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -75,12 +77,17 @@ public class AudioControllerTest {
 
   @Test 
   void testCreateAudioSuccess() throws Exception {
-    MockMultipartFile audioFile = new MockMultipartFile(
+    MockMultipartFile audioFile;
+    try (InputStream inputStream = new ClassPathResource(
+      "audio/sempurna.mp3"
+    ).getInputStream()) {
+      audioFile = new MockMultipartFile(
         "audioFile",
-        "test-audio.mp3",
+        "sempurna.mp3",
         "audio/mpeg",
-        "Test audio content".getBytes()
-    );
+        inputStream
+      );
+    }
 
     MockMultipartFile imageCover = new MockMultipartFile(
         "imageCover",
@@ -111,6 +118,7 @@ public class AudioControllerTest {
     assertEquals("Test Author", webResponse.getData().getAuthor());
     assertEquals("Test Album", webResponse.getData().getAlbum());
     assertEquals((short)2023, webResponse.getData().getYear());
+    assertNotNull(webResponse.getData().getDuration());
 
     List<Audio> audio = audioRepository.findAll();
     assertEquals(1, audio.size());
@@ -119,6 +127,7 @@ public class AudioControllerTest {
     assertEquals("Test Author", savedAudio.getAuthor());
     assertEquals("Test Album", savedAudio.getAlbum());
     assertEquals((short)2023, savedAudio.getYear());
+    assertNotNull(savedAudio.getDuration());
   }
 
   @Test 
