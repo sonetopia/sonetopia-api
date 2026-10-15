@@ -5,6 +5,7 @@ import jakarta.validation.ConstraintValidatorContext;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Arrays;
+import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -17,8 +18,8 @@ public class ValidImageCoverValidator implements ConstraintValidator<ValidImageC
   @Override
   public void initialize(ValidImageCover annotation) {
     this.maxSize = annotation.maxSize();
-    this.allowedMimeTypes = Arrays.stream(annotation.allowedMimeTypes()).map(String::toLowerCase).collect(Collectors.toSet());
-    this.allowedExtensions = Arrays.stream(annotation.allowedExtensions()).map(String::toLowerCase).collect(Collectors.toSet());
+    this.allowedMimeTypes = Arrays.stream(annotation.allowedMimeTypes()).map(type -> type.toLowerCase(Locale.ROOT)).collect(Collectors.toSet());
+    this.allowedExtensions = Arrays.stream(annotation.allowedExtensions()).map(ext -> ext.toLowerCase(Locale.ROOT)).collect(Collectors.toSet());
   }
 
   @Override
