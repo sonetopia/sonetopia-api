@@ -12,11 +12,14 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HexFormat;
+import java.util.Locale;
 import java.util.UUID;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
+import org.jaudiotagger.audio.AudioFile;
+import org.jaudiotagger.audio.AudioFileIO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
@@ -49,11 +52,27 @@ public class LocalAudioStorageService implements AudioStorageService {
     String extension = getExtension(audioFile.getOriginalFilename());
     String storageKey = "users/" + userId + "/audio/" + audioId + "/audio." + extension;
     Path destination = resolveStorageKey(storageKey);
+
     Files.createDirectories(destination.getParent());
     try (var inputStream = audioFile.getInputStream()) {
       Files.copy(inputStream, destination, StandardCopyOption.REPLACE_EXISTING);
     } catch (Exception e) {
       throw new IOException("Failed to store audio file", e);
+    }
+
+    try {
+      AudioFile parsedAudio = AudioFileIO.read(destination.toFile());
+      if (parsedAudio.getAudioHeader() == null) {
+        throw new IOException("Invalid or unsupported audio file");
+      }
+    } catch (Exception e) {
+      try {
+        Files.deleteIfExists(destination);
+      } catch (IOException cleanupException) {
+        e.addSuppressed(cleanupException);
+      }
+
+      throw new IOException("Invalid or unsupported audio file");
     }
 
     return storageKey;
@@ -65,6 +84,7 @@ public class LocalAudioStorageService implements AudioStorageService {
     String extension = getExtension(imageCover.getOriginalFilename());
     String storageKey = "users/" + userId + "/audio/" + audioId + "/cover." + extension;
     Path destination = resolveStorageKey(storageKey);
+    
     Files.createDirectories(destination.getParent());
     try (var inputStream = imageCover.getInputStream()) {
       Files.copy(inputStream, destination, StandardCopyOption.REPLACE_EXISTING);
@@ -204,6 +224,6 @@ public class LocalAudioStorageService implements AudioStorageService {
       throw new IllegalArgumentException("Invalid file name");
     }
 
-    return filename.substring(filename.lastIndexOf('.') + 1).toLowerCase();
+    return filename.substring(filename.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
   }
 }

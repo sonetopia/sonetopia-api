@@ -64,6 +64,6 @@ public class ValidImageCoverValidator implements ConstraintValidator<ValidImageC
       return null;
     }
 
-    return filename.substring(filename.lastIndexOf('.') + 1).toLowerCase();
+    return filename.substring(filename.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
   }
 }

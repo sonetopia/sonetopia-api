@@ -71,6 +71,6 @@ public class ValidAudioValidator implements ConstraintValidator<ValidAudio, Mult
       return null;
     }
 
-    return filename.substring(filename.lastIndexOf('.') + 1).toLowerCase();
+    return filename.substring(filename.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
   }
 }
