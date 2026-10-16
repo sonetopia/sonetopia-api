@@ -3,11 +3,16 @@ package com.sonetopia.controller;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -17,6 +22,8 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.sonetopia.model.AuthResponse;
+import com.sonetopia.model.LoginRequest;
 import com.sonetopia.model.WebResponse;
 import com.sonetopia.repository.AudioRepository;
 import com.sonetopia.repository.UserRepository;
@@ -37,6 +44,8 @@ import tools.jackson.databind.ObjectMapper;
     "spring.flyway.locations=classpath:db/migration",
     "spring.storage.audio-path=C:/projects/sonetopia",
     "spring.storage.signed-url-secret=sonetopia-very-secret-key-from-microsoft",
+    "spring.security.jwt.secret=sonetopia-jwt-secret-key-for-testing",
+    "spring.security.jwt.expiration=86400000",
     "spring.servlet.multipart.max-file-size=50MB",
     "spring.servlet.multipart.max-request-size=55MB",
     "spring.cors.allowed-origins=http://localhost:5173,http://localhost:5174"
@@ -57,21 +66,28 @@ public class MediaControllerTest {
   @Autowired 
   private ObjectMapper objectMapper;
 
+  @Autowired
+  private PasswordEncoder passwordEncoder;
+
+  private String accessToken;
+
   @BeforeEach 
-  void setUp() {
+  void setUp() throws Exception {
     audioRepository.deleteAll();
     userRepository.deleteAll();
 
     User user = new User();
     user.setUsername("test");
     user.setEmail("test@gmail.com");
-    user.setPassword("test");
+    user.setPassword(passwordEncoder.encode("test"));
     user.setStorageUsed(0L);
     user.setIsAdmin(true);
     user.setCreatedAt(LocalDateTime.now());
     user.setUpdatedAt(LocalDateTime.now());
 
     userRepository.save(user);
+
+    accessToken = obtainAccessToken();
   }
 
   @Test
@@ -88,7 +104,7 @@ public class MediaControllerTest {
       );
     }
 
-    mockMvc.perform(
+    perform(
       multipart("/api/v1/audio")
         .file(audioFile)
         .param("title", "Test Audio")
@@ -104,7 +120,7 @@ public class MediaControllerTest {
         assertNotNull(webResponse.getData());
         UUID audioId = webResponse.getData().getId();
     
-        mockMvc.perform(get("/api/v1/audio/" + audioId))
+        perform(get("/api/v1/audio/" + audioId))
           .andExpectAll(
             status().isOk()
           ).andDo(getResult -> {
@@ -116,7 +132,7 @@ public class MediaControllerTest {
             assertNotNull(getWebResponse.getData().getSignedUrl());
 
             String signedUrl = getWebResponse.getData().getSignedUrl();
-            mockMvc.perform(get(signedUrl))
+            perform(get(signedUrl))
               .andExpectAll(
                 status().isOk()
               ).andDo(streamResult -> {
@@ -141,7 +157,7 @@ public class MediaControllerTest {
       );
     }
 
-    mockMvc.perform(
+    perform(
       multipart("/api/v1/audio")
         .file(audioFile)
         .param("title", "Test Audio")
@@ -157,7 +173,7 @@ public class MediaControllerTest {
         assertNotNull(webResponse.getData());
         UUID audioId = webResponse.getData().getId();
     
-        mockMvc.perform(get("/api/v1/audio/" + audioId))
+        perform(get("/api/v1/audio/" + audioId))
           .andExpectAll(
             status().isOk()
           ).andDo(getResult -> {
@@ -171,7 +187,7 @@ public class MediaControllerTest {
             String signedUrl = getWebResponse.getData().getSignedUrl();
             // Simulate expired signed URL by manipulating the expires parameter
             String expiredSignedUrl = signedUrl.replaceAll("expires=\\d+", "expires=99999999999");
-            mockMvc.perform(get(expiredSignedUrl))
+            perform(get(expiredSignedUrl))
               .andExpectAll(
                 status().isUnauthorized()
               ).andDo(streamResult -> {
@@ -199,7 +215,7 @@ public class MediaControllerTest {
       );
     }
 
-    mockMvc.perform(
+    perform(
       multipart("/api/v1/audio")
         .file(audioFile)
         .param("title", "Test Audio")
@@ -215,7 +231,7 @@ public class MediaControllerTest {
         assertNotNull(webResponse.getData());
         UUID audioId = webResponse.getData().getId();
     
-        mockMvc.perform(get("/api/v1/audio/" + audioId))
+        perform(get("/api/v1/audio/" + audioId))
           .andExpectAll(
             status().isOk()
           ).andDo(getResult -> {
@@ -227,7 +243,7 @@ public class MediaControllerTest {
             assertNotNull(getWebResponse.getData().getSignedUrl());
 
             String signedUrl = getWebResponse.getData().getSignedUrl();
-            mockMvc.perform(get(signedUrl).header("Range", "bytes=0-4"))
+            perform(get(signedUrl).header("Range", "bytes=0-4"))
               .andExpectAll(
                 status().isPartialContent()
               ).andDo(streamResult -> {
@@ -253,7 +269,7 @@ public class MediaControllerTest {
       );
     }
 
-    mockMvc.perform(
+    perform(
       multipart("/api/v1/audio")
         .file(audioFile)
         .param("title", "Test Audio")
@@ -269,7 +285,7 @@ public class MediaControllerTest {
         assertNotNull(webResponse.getData());
         UUID audioId = webResponse.getData().getId();
     
-        mockMvc.perform(get("/api/v1/audio/" + audioId))
+        perform(get("/api/v1/audio/" + audioId))
           .andExpectAll(
             status().isOk()
           ).andDo(getResult -> {
@@ -281,7 +297,7 @@ public class MediaControllerTest {
             assertNotNull(getWebResponse.getData().getSignedUrl());
 
             String signedUrl = getWebResponse.getData().getSignedUrl();
-            mockMvc.perform(get(signedUrl).header("Range", "bytes=999999-9999999")) // Invalid range
+            perform(get(signedUrl).header("Range", "bytes=999999-9999999")) // Invalid range
               .andExpectAll(
                 status().isRequestedRangeNotSatisfiable(),
                 header().string("Content-Range", "bytes */" + getWebResponse.getData().getFileSize())
@@ -311,7 +327,7 @@ public class MediaControllerTest {
       "Test cover content".getBytes()
     );
 
-    mockMvc.perform(
+    perform(
       multipart("/api/v1/audio")
         .file(audioFile)
         .file(imageCover)
@@ -328,7 +344,7 @@ public class MediaControllerTest {
         assertNotNull(webResponse.getData());
         UUID audioId = webResponse.getData().getId();
     
-        mockMvc.perform(get("/api/v1/audio/" + audioId + "/cover"))
+        perform(get("/api/v1/audio/" + audioId + "/cover"))
           .andExpectAll(
             status().isOk()
           ).andDo(getResult -> {
@@ -340,7 +356,7 @@ public class MediaControllerTest {
             assertNotNull(getWebResponse.getData().getSignedUrl());
 
             String coverSignedUrl = getWebResponse.getData().getSignedUrl();
-            mockMvc.perform(get(coverSignedUrl))
+            perform(get(coverSignedUrl))
               .andExpectAll(
                 status().isOk()
               ).andDo(streamResult -> {
@@ -372,7 +388,7 @@ public class MediaControllerTest {
       "Test cover content".getBytes()
     );
 
-    mockMvc.perform(
+    perform(
       multipart("/api/v1/audio")
         .file(audioFile)
         .file(imageCover)
@@ -389,7 +405,7 @@ public class MediaControllerTest {
         assertNotNull(webResponse.getData());
         UUID audioId = webResponse.getData().getId();
     
-        mockMvc.perform(get("/api/v1/audio/" + audioId + "/cover"))
+        perform(get("/api/v1/audio/" + audioId + "/cover"))
           .andExpectAll(
             status().isOk()
           ).andDo(getResult -> {
@@ -403,7 +419,7 @@ public class MediaControllerTest {
             String coverSignedUrl = getWebResponse.getData().getSignedUrl();
             // Simulate expired signed URL by manipulating the expires parameter
             String expiredCoverSignedUrl = coverSignedUrl.replaceAll("expires=\\d+", "expires=99999999999");
-            mockMvc.perform(get(expiredCoverSignedUrl))
+            perform(get(expiredCoverSignedUrl))
               .andExpectAll(
                 status().isUnauthorized()
               ).andDo(streamResult -> {
@@ -417,4 +433,30 @@ public class MediaControllerTest {
       });
   }
 
+
+  private String obtainAccessToken() throws Exception {
+    LoginRequest loginRequest = new LoginRequest();
+    loginRequest.setUsername("test");
+    loginRequest.setPassword("test");
+
+    String responseJson = mockMvc.perform(post("/api/auth/login")
+        .contentType("application/json")
+        .content(objectMapper.writeValueAsString(loginRequest))
+      ).andExpect(status().isOk())
+      .andReturn()
+      .getResponse()
+      .getContentAsString();
+
+    WebResponse<AuthResponse> response = objectMapper.readValue(responseJson, new TypeReference<WebResponse<AuthResponse>>() {});
+
+    return response.getData().getToken();
+  }
+
+  private ResultActions perform(MockMultipartHttpServletRequestBuilder request) throws Exception {
+    return mockMvc.perform(request.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken));
+  }
+
+  private ResultActions perform(MockHttpServletRequestBuilder request) throws Exception {
+    return mockMvc.perform(request.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken));
+  }
 }

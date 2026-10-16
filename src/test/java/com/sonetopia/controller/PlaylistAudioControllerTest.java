@@ -3,9 +3,13 @@ package com.sonetopia.controller;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -20,6 +24,8 @@ import com.sonetopia.entity.Playlist;
 import com.sonetopia.entity.PlaylistAudio;
 import com.sonetopia.entity.User;
 import com.sonetopia.model.PlaylistAudioResponse;
+import com.sonetopia.model.AuthResponse;
+import com.sonetopia.model.LoginRequest;
 import com.sonetopia.model.WebResponse;
 import com.sonetopia.repository.AudioRepository;
 import com.sonetopia.repository.PlaylistAudioRepository;
@@ -39,6 +45,8 @@ import tools.jackson.databind.ObjectMapper;
     "spring.flyway.locations=classpath:db/migration",
     "spring.storage.audio-path=C:/projects/sonetopia",
     "spring.storage.signed-url-secret=sonetopia-very-secret-key-from-microsoft",
+    "spring.security.jwt.secret=sonetopia-jwt-secret-key-for-testing",
+    "spring.security.jwt.expiration=86400000",
     "spring.servlet.multipart.max-file-size=50MB",
     "spring.servlet.multipart.max-request-size=55MB",
     "spring.cors.allowed-origins=http://localhost:5173,http://localhost:5174"
@@ -65,8 +73,13 @@ public class PlaylistAudioControllerTest {
   @Autowired 
   private ObjectMapper objectMapper;
 
+  @Autowired
+  private PasswordEncoder passwordEncoder;
+
+  private String accessToken;
+
   @BeforeEach 
-  void setUp() {
+  void setUp() throws Exception {
     audioRepository.deleteAll();
     playlistRepository.deleteAll();
     playlistAudioRepository.deleteAll();
@@ -75,13 +88,15 @@ public class PlaylistAudioControllerTest {
     User user = new User();
     user.setUsername("test");
     user.setEmail("test@gmail.com");
-    user.setPassword("test");
+    user.setPassword(passwordEncoder.encode("test"));
     user.setStorageUsed(0L);
     user.setIsAdmin(true);
     user.setCreatedAt(LocalDateTime.now());
     user.setUpdatedAt(LocalDateTime.now());
 
     userRepository.save(user);
+
+    accessToken = obtainAccessToken();
 
     Audio audio1 = new Audio();
     audio1.setId(UUID.randomUUID());
@@ -129,7 +144,7 @@ public class PlaylistAudioControllerTest {
     Playlist playlist = playlistRepository.findAll().get(0);
     Audio audio = audioRepository.findAll().get(0);
 
-    mockMvc.perform(post("/api/v1/playlists/{playlistId}/audio/{audioId}", playlist.getId(), audio.getId())
+    perform(post("/api/v1/playlists/{playlistId}/audio/{audioId}", playlist.getId(), audio.getId())
       .contentType("application/json")
     ).andExpectAll(
       status().isOk()
@@ -146,20 +161,20 @@ public class PlaylistAudioControllerTest {
     Audio audio2 = audioRepository.findAll().get(1);
     Audio audio3 = audioRepository.findAll().get(2);
 
-    mockMvc.perform(post("/api/v1/playlists/{playlistId}/audio/{audioId}", playlist.getId(), audio1.getId())
+    perform(post("/api/v1/playlists/{playlistId}/audio/{audioId}", playlist.getId(), audio1.getId())
       .contentType("application/json")
     ).andExpect(status().isOk());
 
-    mockMvc.perform(post("/api/v1/playlists/{playlistId}/audio/{audioId}", playlist.getId(), audio2.getId())
+    perform(post("/api/v1/playlists/{playlistId}/audio/{audioId}", playlist.getId(), audio2.getId())
       .contentType("application/json")
     ).andExpect(status().isOk());
 
-    mockMvc.perform(post("/api/v1/playlists/{playlistId}/audio/{audioId}", playlist.getId(), audio3.getId())
+    perform(post("/api/v1/playlists/{playlistId}/audio/{audioId}", playlist.getId(), audio3.getId())
       .contentType("application/json")
     ).andExpect(status().isOk());
 
     // Update the position of the second audio to 0
-    mockMvc.perform(put("/api/v1/playlists/{playlistId}/audio/{audioId}/position/{newPosition}", playlist.getId(), audio2.getId(), 0)
+    perform(put("/api/v1/playlists/{playlistId}/audio/{audioId}/position/{newPosition}", playlist.getId(), audio2.getId(), 0)
       .contentType("application/json")
     ).andExpectAll(
       status().isOk()
@@ -183,16 +198,16 @@ public class PlaylistAudioControllerTest {
     Audio audio1 = audioRepository.findAll().get(0);
     Audio audio2 = audioRepository.findAll().get(1);
 
-    mockMvc.perform(post("/api/v1/playlists/{playlistId}/audio/{audioId}", playlist.getId(), audio1.getId())
+    perform(post("/api/v1/playlists/{playlistId}/audio/{audioId}", playlist.getId(), audio1.getId())
       .contentType("application/json")
     ).andExpect(status().isOk());
 
-    mockMvc.perform(post("/api/v1/playlists/{playlistId}/audio/{audioId}", playlist.getId(), audio2.getId())
+    perform(post("/api/v1/playlists/{playlistId}/audio/{audioId}", playlist.getId(), audio2.getId())
       .contentType("application/json")
     ).andExpect(status().isOk());
 
     // Attempt to update the position of the second audio to an invalid position (e.g., 5)
-    mockMvc.perform(put("/api/v1/playlists/{playlistId}/audio/{audioId}/position/{newPosition}", playlist.getId(), audio2.getId(), 5)
+    perform(put("/api/v1/playlists/{playlistId}/audio/{audioId}/position/{newPosition}", playlist.getId(), audio2.getId(), 5)
       .contentType("application/json")
     ).andExpectAll(
       status().isBadRequest()
@@ -209,19 +224,19 @@ public class PlaylistAudioControllerTest {
     Audio audio2 = audioRepository.findAll().get(1);
     Audio audio3 = audioRepository.findAll().get(2);
 
-    mockMvc.perform(post("/api/v1/playlists/{playlistId}/audio/{audioId}", playlist.getId(), audio1.getId())
+    perform(post("/api/v1/playlists/{playlistId}/audio/{audioId}", playlist.getId(), audio1.getId())
       .contentType("application/json")
     ).andExpect(status().isOk());
 
-    mockMvc.perform(post("/api/v1/playlists/{playlistId}/audio/{audioId}", playlist.getId(), audio2.getId())
+    perform(post("/api/v1/playlists/{playlistId}/audio/{audioId}", playlist.getId(), audio2.getId())
       .contentType("application/json")
     ).andExpect(status().isOk());
 
-    mockMvc.perform(post("/api/v1/playlists/{playlistId}/audio/{audioId}", playlist.getId(), audio3.getId())
+    perform(post("/api/v1/playlists/{playlistId}/audio/{audioId}", playlist.getId(), audio3.getId())
       .contentType("application/json")
     ).andExpect(status().isOk());
 
-    mockMvc.perform(delete("/api/v1/playlists/{playlistId}/audio/{audioId}", playlist.getId(), audio1.getId())
+    perform(delete("/api/v1/playlists/{playlistId}/audio/{audioId}", playlist.getId(), audio1.getId())
       .contentType("application/json")
     ).andExpectAll(
       status().isOk()
@@ -244,15 +259,15 @@ public class PlaylistAudioControllerTest {
     Audio audio1 = audioRepository.findAll().get(0);
     Audio audio2 = audioRepository.findAll().get(1);
 
-    mockMvc.perform(post("/api/v1/playlists/{playlistId}/audio/{audioId}", playlist.getId(), audio1.getId())
+    perform(post("/api/v1/playlists/{playlistId}/audio/{audioId}", playlist.getId(), audio1.getId())
       .contentType("application/json")
     ).andExpect(status().isOk());
 
-    mockMvc.perform(post("/api/v1/playlists/{playlistId}/audio/{audioId}", playlist.getId(), audio2.getId())
+    perform(post("/api/v1/playlists/{playlistId}/audio/{audioId}", playlist.getId(), audio2.getId())
       .contentType("application/json")
     ).andExpect(status().isOk());
 
-    mockMvc.perform(get("/api/v1/playlists/{playlistId}/audio", playlist.getId())
+    perform(get("/api/v1/playlists/{playlistId}/audio", playlist.getId())
       .contentType("application/json")
     ).andExpectAll(
       status().isOk()
@@ -264,5 +279,27 @@ public class PlaylistAudioControllerTest {
       assertEquals(Integer.valueOf(0), response.getData().get(0).getPosition());
       assertEquals(Integer.valueOf(1), response.getData().get(1).getPosition());
     });
+  }
+
+  private String obtainAccessToken() throws Exception {
+    LoginRequest loginRequest = new LoginRequest();
+    loginRequest.setUsername("test");
+    loginRequest.setPassword("test");
+
+    String responseJson = mockMvc.perform(post("/api/auth/login")
+        .contentType("application/json")
+        .content(objectMapper.writeValueAsString(loginRequest))
+      ).andExpect(status().isOk())
+      .andReturn()
+      .getResponse()
+      .getContentAsString();
+
+    WebResponse<AuthResponse> response = objectMapper.readValue(responseJson, new TypeReference<WebResponse<AuthResponse>>() {});
+
+    return response.getData().getToken();
+  }
+
+  private ResultActions perform(MockHttpServletRequestBuilder request) throws Exception {
+    return mockMvc.perform(request.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken));
   }
 }

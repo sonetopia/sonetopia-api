@@ -3,9 +3,13 @@ package com.sonetopia.controller;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -17,6 +21,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.sonetopia.entity.Playlist;
 import com.sonetopia.entity.User;
+import com.sonetopia.model.AuthResponse;
+import com.sonetopia.model.LoginRequest;
 import com.sonetopia.model.WebResponse;
 import com.sonetopia.model.CreatePlaylistRequest;
 import com.sonetopia.model.PlaylistResponse;
@@ -36,6 +42,8 @@ import tools.jackson.databind.ObjectMapper;
     "spring.flyway.locations=classpath:db/migration",
     "spring.storage.audio-path=C:/projects/sonetopia",
     "spring.storage.signed-url-secret=sonetopia-very-secret-key-from-microsoft",
+    "spring.security.jwt.secret=sonetopia-jwt-secret-key-for-testing",
+    "spring.security.jwt.expiration=86400000",
     "spring.servlet.multipart.max-file-size=50MB",
     "spring.servlet.multipart.max-request-size=55MB",
     "spring.cors.allowed-origins=http://localhost:5173,http://localhost:5174"
@@ -56,21 +64,28 @@ public class PlaylistControllerTest {
   @Autowired 
   private ObjectMapper objectMapper;
 
+  @Autowired
+  private PasswordEncoder passwordEncoder;
+
+  private String accessToken;
+
   @BeforeEach 
-  void setUp() {
+  void setUp() throws Exception {
     playlistRepository.deleteAll();
     userRepository.deleteAll();
 
     User user = new User();
     user.setUsername("test");
     user.setEmail("test@gmail.com");
-    user.setPassword("test");
+    user.setPassword(passwordEncoder.encode("test"));
     user.setStorageUsed(0L);
     user.setIsAdmin(true);
     user.setCreatedAt(LocalDateTime.now());
     user.setUpdatedAt(LocalDateTime.now());
 
     userRepository.save(user);
+
+    accessToken = obtainAccessToken();
   }
 
   @Test
@@ -78,7 +93,7 @@ public class PlaylistControllerTest {
     CreatePlaylistRequest request = new CreatePlaylistRequest();
     request.setTitle("Test Playlist");
 
-    mockMvc.perform(post("/api/v1/playlists")
+    perform(post("/api/v1/playlists")
         .contentType("application/json")
         .content(objectMapper.writeValueAsString(request))
     ).andExpectAll(
@@ -101,7 +116,7 @@ public class PlaylistControllerTest {
     CreatePlaylistRequest request = new CreatePlaylistRequest();
     request.setTitle(""); // Invalid title
 
-    mockMvc.perform(post("/api/v1/playlists")
+    perform(post("/api/v1/playlists")
         .contentType("application/json")
         .content(objectMapper.writeValueAsString(request))
     ).andExpectAll(
@@ -125,7 +140,7 @@ public class PlaylistControllerTest {
     playlist.setUpdatedAt(LocalDateTime.now());
     playlistRepository.save(playlist);
 
-    mockMvc.perform(get("/api/v1/playlists/" + playlist.getId())
+    perform(get("/api/v1/playlists/" + playlist.getId())
         .contentType("application/json")
     ).andExpectAll(
         status().isOk()
@@ -145,7 +160,7 @@ public class PlaylistControllerTest {
 
   @Test
   void testGetPlaylistNotFound() throws Exception {
-    mockMvc.perform(get("/api/v1/playlists/" + UUID.randomUUID())
+    perform(get("/api/v1/playlists/" + UUID.randomUUID())
         .contentType("application/json")
     ).andExpectAll(
         status().isNotFound()
@@ -173,7 +188,7 @@ public class PlaylistControllerTest {
     CreatePlaylistRequest request = new CreatePlaylistRequest();
     request.setTitle("Updated Playlist");
 
-    mockMvc.perform(put("/api/v1/playlists/" + playlist.getId())
+    perform(put("/api/v1/playlists/" + playlist.getId())
         .contentType("application/json")
         .content(objectMapper.writeValueAsString(request))
     ).andExpectAll(
@@ -204,7 +219,7 @@ public class PlaylistControllerTest {
     CreatePlaylistRequest request = new CreatePlaylistRequest();
     request.setTitle(""); // Invalid title
 
-    mockMvc.perform(put("/api/v1/playlists/" + playlist.getId())
+    perform(put("/api/v1/playlists/" + playlist.getId())
         .contentType("application/json")
         .content(objectMapper.writeValueAsString(request))
     ).andExpectAll(
@@ -228,7 +243,7 @@ public class PlaylistControllerTest {
     playlist.setUpdatedAt(LocalDateTime.now());
     playlistRepository.save(playlist);
 
-    mockMvc.perform(delete("/api/v1/playlists/" + playlist.getId())
+    perform(delete("/api/v1/playlists/" + playlist.getId())
         .contentType("application/json")
     ).andExpectAll(
         status().isOk()
@@ -259,7 +274,7 @@ public class PlaylistControllerTest {
     playlist2.setUpdatedAt(LocalDateTime.now());
     playlistRepository.save(playlist2);
 
-    mockMvc.perform(get("/api/v1/playlists")
+    perform(get("/api/v1/playlists")
         .contentType("application/json")
     ).andExpectAll(
         status().isOk()
@@ -274,5 +289,27 @@ public class PlaylistControllerTest {
       assertTrue(response.getData().stream().anyMatch(p -> p.getId().equals(playlist1.getId())));
       assertTrue(response.getData().stream().anyMatch(p -> p.getId().equals(playlist2.getId())));
     });
+  }
+
+  private String obtainAccessToken() throws Exception {
+    LoginRequest loginRequest = new LoginRequest();
+    loginRequest.setUsername("test");
+    loginRequest.setPassword("test");
+
+    String responseJson = mockMvc.perform(post("/api/auth/login")
+        .contentType("application/json")
+        .content(objectMapper.writeValueAsString(loginRequest))
+      ).andExpect(status().isOk())
+      .andReturn()
+      .getResponse()
+      .getContentAsString();
+
+    WebResponse<AuthResponse> response = objectMapper.readValue(responseJson, new TypeReference<WebResponse<AuthResponse>>() {});
+
+    return response.getData().getToken();
+  }
+
+  private ResultActions perform(MockHttpServletRequestBuilder request) throws Exception {
+    return mockMvc.perform(request.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken));
   }
 }

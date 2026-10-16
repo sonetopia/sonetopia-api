@@ -17,4 +17,4 @@ ALTER TABLE audio
 ALTER TABLE audio
     ADD COLUMN cover_mime_type VARCHAR(100),
     ADD COLUMN cover_file_size BIGINT,
-    ADD COLUMN cover_version INTEGER NOT NULL DEFAULT 0;
+    ADD COLUMN cover_version INTEGER DEFAULT 0;

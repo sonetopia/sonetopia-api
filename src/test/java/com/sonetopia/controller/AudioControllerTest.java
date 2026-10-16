@@ -3,11 +3,16 @@ package com.sonetopia.controller;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -20,6 +25,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.sonetopia.entity.Audio;
 import com.sonetopia.entity.User;
+import com.sonetopia.model.AuthResponse;
+import com.sonetopia.model.LoginRequest;
 import com.sonetopia.model.WebResponse;
 import com.sonetopia.model.AudioResponse;
 import com.sonetopia.repository.AudioRepository;
@@ -38,6 +45,8 @@ import tools.jackson.databind.ObjectMapper;
     "spring.flyway.locations=classpath:db/migration",
     "spring.storage.audio-path=C:/projects/sonetopia",
     "spring.storage.signed-url-secret=sonetopia-very-secret-key-from-microsoft",
+    "spring.security.jwt.secret=sonetopia-jwt-secret-key-for-testing",
+    "spring.security.jwt.expiration=86400000",
     "spring.servlet.multipart.max-file-size=50MB",
     "spring.servlet.multipart.max-request-size=55MB",
     "spring.cors.allowed-origins=http://localhost:5173,http://localhost:5174"
@@ -58,21 +67,28 @@ public class AudioControllerTest {
   @Autowired 
   private ObjectMapper objectMapper;
 
+  @Autowired
+  private PasswordEncoder passwordEncoder;
+
+  private String accessToken;
+
   @BeforeEach 
-  void setUp() {
+  void setUp() throws Exception {
     audioRepository.deleteAll();
     userRepository.deleteAll();
 
     User user = new User();
     user.setUsername("test");
     user.setEmail("test@gmail.com");
-    user.setPassword("test");
+    user.setPassword(passwordEncoder.encode("test"));
     user.setStorageUsed(0L);
     user.setIsAdmin(true);
     user.setCreatedAt(LocalDateTime.now());
     user.setUpdatedAt(LocalDateTime.now());
 
     userRepository.save(user);
+
+    accessToken = obtainAccessToken();
   }
 
   @Test 
@@ -96,7 +112,7 @@ public class AudioControllerTest {
         "Test image content".getBytes()
     );
 
-    String responseJson = mockMvc.perform(
+    String responseJson = perform(
       multipart("/api/v1/audio")
         .file(audioFile)
         .file(imageCover)
@@ -139,7 +155,7 @@ public class AudioControllerTest {
         "Test audio content".getBytes()
     );
 
-    mockMvc.perform(
+    perform(
       multipart("/api/v1/audio")
         .file(audioFile)
         .param("title", "") // Empty title to trigger validation error
@@ -164,7 +180,7 @@ public class AudioControllerTest {
         "Test audio content".getBytes()
     );
 
-    mockMvc.perform(
+    perform(
       multipart("/api/v1/audio")
         .file(audioFile)
         .param("title", "Test Audio")
@@ -189,7 +205,7 @@ public class AudioControllerTest {
       "Test audio content".getBytes()
     );
 
-    mockMvc.perform(
+    perform(
       multipart("/api/v1/audio")
         .file(audioFile)
         .param("title", "Test Audio")
@@ -221,7 +237,7 @@ public class AudioControllerTest {
       "Test image content".getBytes()
     );
 
-    mockMvc.perform(
+    perform(
       multipart("/api/v1/audio")
         .file(audioFile)
         .file(imageCover)
@@ -251,7 +267,7 @@ public class AudioControllerTest {
     audio.setUpdatedAt(LocalDateTime.now());
     audioRepository.save(audio);
 
-    mockMvc.perform(get("/api/v1/audio/" + audio.getId()))
+    perform(get("/api/v1/audio/" + audio.getId()))
       .andExpectAll(
         status().isOk()
       ).andDo(getResult -> {
@@ -269,7 +285,7 @@ public class AudioControllerTest {
   void testGetAudioNotFound() throws Exception {
     UUID nonExistentAudioId = UUID.randomUUID();
 
-    mockMvc.perform(get("/api/v1/audio/" + nonExistentAudioId))
+    perform(get("/api/v1/audio/" + nonExistentAudioId))
       .andExpectAll(
         status().isNotFound()
       ).andDo(result -> {
@@ -295,7 +311,7 @@ public class AudioControllerTest {
     audio.setUpdatedAt(LocalDateTime.now());
     audioRepository.save(audio);
 
-    mockMvc.perform(
+    perform(
       multipart("/api/v1/audio/" + audio.getId())
         .param("title", "Updated Test Audio")
         .param("author", "Updated Test Author")
@@ -338,7 +354,7 @@ public class AudioControllerTest {
       "New test image content".getBytes()
     );
 
-    mockMvc.perform(
+    perform(
       multipart("/api/v1/audio/" + audio.getId())
         .file(newImageCover)
         .param("title", "Updated Test Audio with New Cover")
@@ -369,7 +385,7 @@ public class AudioControllerTest {
     audio.setUpdatedAt(LocalDateTime.now());
     audioRepository.save(audio);
 
-    mockMvc.perform(
+    perform(
       multipart("/api/v1/audio/" + audio.getId())
         .param("title", "") // Empty title to trigger validation error
         .with(request -> { request.setMethod("PUT"); return request; }) // Override method to PUT
@@ -398,7 +414,7 @@ public class AudioControllerTest {
     audio.setUpdatedAt(LocalDateTime.now());
     audioRepository.save(audio);
 
-    mockMvc.perform(delete("/api/v1/audio/" + audio.getId()))
+    perform(delete("/api/v1/audio/" + audio.getId()))
       .andExpectAll(
         status().isOk()
       ).andDo(deleteResult -> {
@@ -439,7 +455,7 @@ public class AudioControllerTest {
     audioRepository.save(audio2);
 
     // List all audios
-    mockMvc.perform(get("/api/v1/audio"))
+    perform(get("/api/v1/audio"))
       .andExpectAll(
         status().isOk()
       ).andDo(result -> {
@@ -455,5 +471,31 @@ public class AudioControllerTest {
         assertEquals("Test Audio 1", audioResponse1.getTitle());
         assertEquals("Test Audio 2", audioResponse2.getTitle());
       });
+  }
+
+  private String obtainAccessToken() throws Exception {
+    LoginRequest loginRequest = new LoginRequest();
+    loginRequest.setUsername("test");
+    loginRequest.setPassword("test");
+
+    String responseJson = mockMvc.perform(post("/api/auth/login")
+        .contentType("application/json")
+        .content(objectMapper.writeValueAsString(loginRequest))
+      ).andExpect(status().isOk())
+      .andReturn()
+      .getResponse()
+      .getContentAsString();
+
+    WebResponse<AuthResponse> response = objectMapper.readValue(responseJson, new TypeReference<WebResponse<AuthResponse>>() {});
+
+    return response.getData().getToken();
+  }
+
+  private ResultActions perform(MockMultipartHttpServletRequestBuilder request) throws Exception {
+    return mockMvc.perform(request.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken));
+  }
+
+  private ResultActions perform(MockHttpServletRequestBuilder request) throws Exception {
+    return mockMvc.perform(request.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken));
   }
 }

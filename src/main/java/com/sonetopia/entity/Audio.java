@@ -51,7 +51,7 @@ public class Audio {
   private Long coverFileSize;
 
   @Column(name = "cover_version")
-  private Integer coverVersion = 0;
+  private Integer coverVersion;
 
   @Column(name = "storage_key")
   private String storageKey;
