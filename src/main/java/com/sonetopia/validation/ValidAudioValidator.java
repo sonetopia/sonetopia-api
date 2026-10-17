@@ -24,45 +24,38 @@ public class ValidAudioValidator implements ConstraintValidator<ValidAudio, Mult
 
   @Override
   public boolean isValid(MultipartFile file, ConstraintValidatorContext context) {
-
     if (file == null) {
       return true;
     }
 
     if (file.isEmpty()) {
-      context.disableDefaultConstraintViolation();
-      context.buildConstraintViolationWithTemplate("Audio file cannot be empty").addConstraintViolation();
-
-      return false;
+      return reject(context, "Audio file cannot be empty");
     }
 
     if (file.getSize() > maxSize) {
-        context.disableDefaultConstraintViolation();
-        context.buildConstraintViolationWithTemplate("Audio file must not exceed " + (maxSize / 1024 / 1024) + " MB").addConstraintViolation();
-
-        return false;
+      return reject(context, "Audio file must not exceed " + (maxSize / 1024 / 1024) + " MiB");
     }
 
     String mimeType = file.getContentType();
 
-    if (mimeType == null || !allowedMimeTypes.contains(mimeType.toLowerCase())) {
-      context.disableDefaultConstraintViolation();
-      context.buildConstraintViolationWithTemplate("Unsupported audio MIME type").addConstraintViolation();
-
-      return false;
+    if (mimeType == null || !allowedMimeTypes.contains(mimeType.toLowerCase(Locale.ROOT))) {
+      return reject(context, "Unsupported audio MIME type");
     }
 
     String extension = getExtension(file.getOriginalFilename());
 
     if (extension == null || !allowedExtensions.contains(extension)) {
-
-      context.disableDefaultConstraintViolation();
-      context.buildConstraintViolationWithTemplate("Unsupported audio file extension").addConstraintViolation();
-
-      return false;
+      return reject(context, "Unsupported audio file extension");
     }
 
     return true;
+  }
+
+  private boolean reject(ConstraintValidatorContext context, String message) {
+    context.disableDefaultConstraintViolation();
+    context.buildConstraintViolationWithTemplate(message).addConstraintViolation();
+
+    return false;
   }
 
   private String getExtension(String filename) {

@@ -30,32 +30,29 @@ public class ValidImageCoverValidator implements ConstraintValidator<ValidImageC
     }
 
     if (file.getSize() > maxSize) {
-        context.disableDefaultConstraintViolation();
-        context.buildConstraintViolationWithTemplate("Image cover must not exceed " + (maxSize / 1024 / 1024) + " MB").addConstraintViolation();
-
-        return false;
+      return reject(context, "Image cover file must not exceed " + (maxSize / 1024 / 1024) + " MiB");
     }
 
     String mimeType = file.getContentType();
 
-    if (mimeType == null || !allowedMimeTypes.contains(mimeType.toLowerCase())) {
-      context.disableDefaultConstraintViolation();
-      context.buildConstraintViolationWithTemplate("Unsupported image cover MIME type").addConstraintViolation();
-
-      return false;
+    if (mimeType == null || !allowedMimeTypes.contains(mimeType.toLowerCase(Locale.ROOT))) {
+      return reject(context, "Unsupported image cover MIME type");
     }
 
     String extension = getExtension(file.getOriginalFilename());
 
     if (extension == null || !allowedExtensions.contains(extension)) {
-
-      context.disableDefaultConstraintViolation();
-      context.buildConstraintViolationWithTemplate("Unsupported image cover file extension").addConstraintViolation();
-
-      return false;
+      return reject(context, "Unsupported image cover file extension");
     }
 
     return true;
+  }
+
+  private boolean reject(ConstraintValidatorContext context, String message) {
+    context.disableDefaultConstraintViolation();
+    context.buildConstraintViolationWithTemplate(message).addConstraintViolation();
+
+    return false;
   }
 
   private String getExtension(String filename) {
