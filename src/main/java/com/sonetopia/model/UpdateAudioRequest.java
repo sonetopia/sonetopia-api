@@ -19,16 +19,16 @@ import lombok.NoArgsConstructor;
 public class UpdateAudioRequest {
   
   @ValidAudio(
-    maxSize = 10 * 1024 * 1024, // 10 MB
+    maxSize = 100 * 1024 * 1024, // 100 MB
     allowedMimeTypes = {"audio/mpeg", "audio/wav", "audio/ogg"},
     allowedExtensions = {"mp3", "wav", "ogg"}
   )
   private MultipartFile audioFile;
 
   @ValidImageCover(
-    maxSize = 5 * 1024 * 1024, // 5 MB
-    allowedMimeTypes = {"image/jpeg", "image/png"},
-    allowedExtensions = {"jpg", "png"}
+    maxSize = 1 * 1024 * 1024, // 1 MB
+    allowedMimeTypes = {"image/jpeg", "image/png", "image/webp"},
+    allowedExtensions = {"jpg", "png", "jpeg", "jfif", "webp"}
   )
   private MultipartFile imageCover;
 
