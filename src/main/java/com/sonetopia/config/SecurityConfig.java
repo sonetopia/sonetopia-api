@@ -82,6 +82,7 @@ public class SecurityConfig {
       .formLogin(AbstractHttpConfigurer::disable)
       .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
       .authorizeHttpRequests(auth -> auth
+        .requestMatchers("/health").permitAll()
         .requestMatchers("/api/auth/**").permitAll()
         .requestMatchers("/api/v1/media/**").permitAll()
         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v1/api-docs/**").permitAll()
