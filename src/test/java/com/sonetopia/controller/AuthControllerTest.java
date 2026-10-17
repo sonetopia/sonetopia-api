@@ -26,24 +26,7 @@ import com.sonetopia.repository.UserRepository;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
-@SpringBootTest(
-  properties = {
-    "spring.datasource.url=jdbc:postgresql://localhost:5432/sonetopia",
-    "spring.datasource.username=postgres",
-    "spring.datasource.password=password",
-    "spring.jpa.hibernate.ddl-auto=validate",
-    "spring.jpa.show-sql=true",
-    "spring.flyway.enabled=true",
-    "spring.flyway.locations=classpath:db/migration",
-    "spring.storage.audio-path=C:/projects/sonetopia",
-    "spring.storage.signed-url-secret=sonetopia-very-secret-key-from-microsoft",
-    "spring.security.jwt.secret=sonetopia-jwt-secret-key-for-testing",
-    "spring.security.jwt.expiration=86400000",
-    "spring.servlet.multipart.max-file-size=50MB",
-    "spring.servlet.multipart.max-request-size=55MB",
-    "spring.cors.allowed-origins=http://localhost:5173,http://localhost:5174"
-  }
-)
+@SpringBootTest
 @AutoConfigureMockMvc
 public class AuthControllerTest {
 
@@ -156,7 +139,7 @@ public class AuthControllerTest {
 
   @Test
   void testLoginSuccess() throws Exception {
-    LoginRequest request = new LoginRequest("test", "test123");
+    LoginRequest request = new LoginRequest("test", "test");
 
     mockMvc.perform(post("/api/auth/login")
         .contentType("application/json")
@@ -197,7 +180,7 @@ public class AuthControllerTest {
 
   @Test
   void testLoginUnknownUsername() throws Exception {
-    LoginRequest request = new LoginRequest("unknown", "test123");
+    LoginRequest request = new LoginRequest("unknown", "test");
 
     mockMvc.perform(post("/api/auth/login")
         .contentType("application/json")
@@ -209,7 +192,7 @@ public class AuthControllerTest {
 
   @Test
   void testGetCurrentUserSuccess() throws Exception {
-    String accessToken = login("test", "test123");
+    String accessToken = login("test", "test");
 
     mockMvc.perform(get("/api/me")
         .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
@@ -237,13 +220,13 @@ public class AuthControllerTest {
 
   @Test
   void testUpdateCurrentUserSuccess() throws Exception {
-    String accessToken = login("test", "test123");
+    String accessToken = login("test", "test");
 
     UpdateUserRequest request = UpdateUserRequest.builder()
         .username("updated")
         .email("updated@gmail.com")
         .password("newpassword")
-        .currentPassword("test123")
+        .currentPassword("test")
         .build();
 
     mockMvc.perform(put("/api/me")
@@ -269,7 +252,7 @@ public class AuthControllerTest {
 
   @Test
   void testUpdateCurrentUserWithoutPasswordSuccess() throws Exception {
-    String accessToken = login("test", "test123");
+    String accessToken = login("test", "test");
 
     UpdateUserRequest request = UpdateUserRequest.builder()
         .username("updated")
@@ -294,12 +277,12 @@ public class AuthControllerTest {
       });
 
     User updatedUser = userRepository.findByUsername("updated").orElseThrow();
-    assertTrue(passwordEncoder.matches("test123", updatedUser.getPassword()));
+    assertTrue(passwordEncoder.matches("test", updatedUser.getPassword()));
   }
 
   @Test
   void testUpdateCurrentUserPasswordRequiresCurrentPassword() throws Exception {
-    String accessToken = login("test", "test123");
+    String accessToken = login("test", "test");
 
     UpdateUserRequest request = UpdateUserRequest.builder()
         .username("test")
@@ -324,12 +307,12 @@ public class AuthControllerTest {
       });
 
     User user = userRepository.findByUsername("test").orElseThrow();
-    assertTrue(passwordEncoder.matches("test123", user.getPassword()));
+    assertTrue(passwordEncoder.matches("test", user.getPassword()));
   }
 
   @Test
   void testUpdateCurrentUserPasswordRejectsWrongCurrentPassword() throws Exception {
-    String accessToken = login("test", "test123");
+    String accessToken = login("test", "test");
 
     UpdateUserRequest request = UpdateUserRequest.builder()
         .username("test")
@@ -355,11 +338,11 @@ public class AuthControllerTest {
       });
 
     User user = userRepository.findByUsername("test").orElseThrow();
-    assertTrue(passwordEncoder.matches("test123", user.getPassword()));
+    assertTrue(passwordEncoder.matches("test", user.getPassword()));
   }
   @Test
   void testUpdateCurrentUserValidationError() throws Exception {
-    String accessToken = login("test", "test123");
+    String accessToken = login("test", "test");
 
     UpdateUserRequest request = UpdateUserRequest.builder()
         .username("")
