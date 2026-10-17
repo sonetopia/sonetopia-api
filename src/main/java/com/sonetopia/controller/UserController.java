@@ -12,6 +12,8 @@ import com.sonetopia.entity.User;
 import com.sonetopia.model.UpdateUserRequest;
 import com.sonetopia.model.UserResponse;
 import com.sonetopia.model.WebResponse;
+import com.sonetopia.model.StorageUsageResponse;
+import com.sonetopia.service.StorageQuotaService;
 import com.sonetopia.service.UserService;
 
 @RestController
@@ -20,6 +22,9 @@ public class UserController {
 
   @Autowired
   private UserService userService;
+
+  @Autowired
+  private StorageQuotaService storageQuotaService;
 
   @GetMapping(produces = "application/json")
   public WebResponse<UserResponse> get(@AuthenticationPrincipal User user) {
@@ -34,5 +39,12 @@ public class UserController {
   ) {
     UserResponse userResponse = userService.update(user, request);
     return WebResponse.<UserResponse>builder().data(userResponse).build();
+  }
+
+  @GetMapping(path = "/storage", produces = "application/json")
+  public WebResponse<StorageUsageResponse> storage(@AuthenticationPrincipal User user) {
+    return WebResponse.<StorageUsageResponse>builder()
+        .data(storageQuotaService.getUsage(user))
+        .build();
   }
 }

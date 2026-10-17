@@ -35,6 +35,9 @@ public class AudioService {
   private LocalAudioStorageService localAudioStorageService;
 
   @Autowired
+  private StorageQuotaService storageQuotaService;
+
+  @Autowired
   private AudioMetadataService audioMetadataService;
 
   private AudioResponse toAudioResponse(Audio audio) {
@@ -63,6 +66,9 @@ public class AudioService {
     audio.setUser(user);
 
     MultipartFile audioFile = request.getAudioFile();
+    MultipartFile imageCover = request.getImageCover();
+    long uploadSize = audioFile.getSize() + (imageCover == null ? 0L : imageCover.getSize());
+    storageQuotaService.addUsage(user, uploadSize);
     
     audio.setTitle(request.getTitle());
     audio.setType(request.getType());
@@ -86,7 +92,6 @@ public class AudioService {
       Path audioPath = localAudioStorageService.resolveStorageKey(audioStorageKey);
       audio.setDuration(audioMetadataService.getDurationInSeconds(audioPath));
   
-      MultipartFile imageCover = request.getImageCover();
       if (imageCover != null && !imageCover.isEmpty()) {
         String imageCoverStorageKey = localAudioStorageService.storeImageCover(
           user.getId(),
@@ -128,7 +133,7 @@ public class AudioService {
     return audioResponse;
   }
 
-  @Transactional
+  @Transactional(rollbackFor = {IOException.class, RuntimeException.class})
   public AudioResponse update(UUID audioId, UpdateAudioRequest request, User user) throws IOException {
     Audio audio = audioRepository.findByIdAndUser(audioId, user).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Audio not found"));
 
@@ -143,6 +148,14 @@ public class AudioService {
 
     MultipartFile imageCover = request.getImageCover();
     if (imageCover != null && !imageCover.isEmpty()) {
+      long previousCoverSize = audio.getCoverFileSize() == null ? 0L : audio.getCoverFileSize();
+      long sizeDelta = imageCover.getSize() - previousCoverSize;
+      if (sizeDelta > 0) {
+        storageQuotaService.addUsage(user, sizeDelta);
+      } else if (sizeDelta < 0) {
+        storageQuotaService.removeUsage(user, -sizeDelta);
+      }
+
       if (audio.getCoverStorageKey() != null) {
         localAudioStorageService.delete(audio.getCoverStorageKey());
       }
@@ -167,6 +180,9 @@ public class AudioService {
     Audio audio = audioRepository.findByIdAndUser(audioId, user).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Audio not found"));
 
     localAudioStorageService.deleteAudioDirectory(user.getId(), audio.getId());
+
+    long deletedSize = audio.getFileSize() + (audio.getCoverFileSize() == null ? 0L : audio.getCoverFileSize());
+    storageQuotaService.removeUsage(user, deletedSize);
 
     audioRepository.delete(audio);
   }
