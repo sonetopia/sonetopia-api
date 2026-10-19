@@ -205,6 +205,30 @@ public class AudioControllerTest {
   }
 
   @Test
+  void testCreateAudioInvalidContent() throws Exception {
+    MockMultipartFile audioFile = new MockMultipartFile(
+      "audioFile",
+      "test-audio.mp3",
+      "audio/mpeg",
+      "This is not an audio file".getBytes()
+    );
+
+    perform(
+      multipart("/api/v1/audio")
+        .file(audioFile)
+        .param("title", "Test Audio")
+      ).andExpectAll(
+        status().isUnprocessableContent()
+      ).andDo(result -> {
+        WebResponse<AudioResponse> webResponse = objectMapper.readValue(result.getResponse().getContentAsString(), new TypeReference<WebResponse<AudioResponse>>() {});
+
+        assertNotNull(webResponse);
+        assertNull(webResponse.getData());
+        assertEquals("Invalid or unsupported audio file", webResponse.getErrors());
+      });
+  }
+
+  @Test
   void testCreateAudioInvalidImageCover() throws Exception {
     MockMultipartFile audioFile = new MockMultipartFile(
       "audioFile",

@@ -13,6 +13,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.time.LocalDateTime;
 
+import jakarta.servlet.DispatcherType;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.sonetopia.entity.User;
@@ -386,6 +388,17 @@ public class AuthControllerTest {
     mockMvc.perform(get("/api/v1/audio"))
       .andExpectAll(
         status().isUnauthorized()
+      );
+  }
+
+  @Test
+  void testErrorDispatchIsNotUnauthorized() throws Exception {
+    mockMvc.perform(get("/error").with(request -> {
+        request.setDispatcherType(DispatcherType.ERROR);
+        return request;
+      }))
+      .andExpectAll(
+        status().is5xxServerError()
       );
   }
 
