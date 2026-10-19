@@ -26,6 +26,7 @@ import com.sonetopia.repository.UserRepository;
 import com.sonetopia.security.JwtAuthenticationFilter;
 import com.sonetopia.security.JwtService;
 
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
 import tools.jackson.databind.ObjectMapper;
 
@@ -82,6 +83,7 @@ public class SecurityConfig {
       .formLogin(AbstractHttpConfigurer::disable)
       .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
       .authorizeHttpRequests(auth -> auth
+        .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
         .requestMatchers("/health").permitAll()
         .requestMatchers("/api/auth/**").permitAll()
         .requestMatchers("/api/v1/media/**").permitAll()
