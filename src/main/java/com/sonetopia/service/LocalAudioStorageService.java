@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
 
@@ -38,6 +39,7 @@ import com.sonetopia.repository.AudioRepository;
 public class LocalAudioStorageService implements AudioStorageService {
 
   private static final String TEMP_DIRECTORY = "temp";
+  private static final long MAX_COVER_BYTES = 1024L * 1024;
 
   private final Path rootLocation;
 
@@ -119,7 +121,7 @@ public class LocalAudioStorageService implements AudioStorageService {
     try (Stream<Path> files = Files.list(directory)) {
       return files
         .filter(Files::isRegularFile)
-        .filter(file -> !file.getFileName().toString().endsWith(".part"))
+        .filter(LocalAudioStorageService::isAudioFile)
         .findFirst()
         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Temporary audio not found"));
     } catch (IOException exception) {
@@ -127,7 +129,23 @@ public class LocalAudioStorageService implements AudioStorageService {
     }
   }
 
-  public String promoteTempAudio(UUID userId, UUID audioId, UUID tempId) throws IOException {
+  public Optional<Path> resolveTempThumbnail(UUID userId, UUID tempId) {
+    Path directory = tempDirectory(userId, tempId);
+    if (!Files.isDirectory(directory)) {
+      return Optional.empty();
+    }
+
+    try (Stream<Path> files = Files.list(directory)) {
+      return files
+        .filter(Files::isRegularFile)
+        .filter(this::isUsableThumbnail)
+        .findFirst();
+    } catch (IOException exception) {
+      return Optional.empty();
+    }
+  }
+
+  public PromotedAudio promoteTempAudio(UUID userId, UUID audioId, UUID tempId) throws IOException {
     Path source = resolveTempAudio(userId, tempId);
     String extension = getExtension(source.getFileName().toString());
     String storageKey = "users/" + userId + "/audio/" + audioId + "/audio." + extension;
@@ -135,9 +153,38 @@ public class LocalAudioStorageService implements AudioStorageService {
 
     Files.createDirectories(destination.getParent());
     Files.move(source, destination, StandardCopyOption.REPLACE_EXISTING);
+
+    String coverStorageKey = promoteTempThumbnail(userId, audioId, tempId);
+
     deleteTempDirectory(userId, tempId);
 
-    return storageKey;
+    return new PromotedAudio(storageKey, coverStorageKey);
+  }
+
+  public record PromotedAudio(String audioStorageKey, String coverStorageKey) {}
+
+  private String promoteTempThumbnail(UUID userId, UUID audioId, UUID tempId) {
+    return resolveTempThumbnail(userId, tempId)
+      .map(thumbnail -> {
+        Path destination = null;
+        try {
+          String coverExtension = getExtension(thumbnail.getFileName().toString());
+          String key = "users/" + userId + "/audio/" + audioId + "/cover." + coverExtension;
+          destination = resolveStorageKey(key);
+          Files.move(thumbnail, destination, StandardCopyOption.REPLACE_EXISTING);
+          return key;
+        } catch (IOException | RuntimeException exception) {
+          if (destination != null) {
+            try {
+              Files.deleteIfExists(destination);
+            } catch (IOException ignored) {
+              // The next cleanup pass can retry.
+            }
+          }
+          return null;
+        }
+      })
+      .orElse(null);
   }
 
   public void deleteTempDirectory(UUID userId, UUID tempId) {
@@ -257,6 +304,25 @@ public class LocalAudioStorageService implements AudioStorageService {
       throw new IllegalArgumentException("Invalid temporary path");
     }
     return directory;
+  }
+
+  private boolean isUsableThumbnail(Path file) {
+    try {
+      return isImageFile(file) && Files.size(file) <= MAX_COVER_BYTES;
+    } catch (IOException exception) {
+      return false;
+    }
+  }
+
+  private static boolean isAudioFile(Path file) {
+    String filename = file.getFileName().toString().toLowerCase(Locale.ROOT);
+    return filename.endsWith(".mp3") || filename.endsWith(".wav") || filename.endsWith(".ogg");
+  }
+
+  private static boolean isImageFile(Path file) {
+    String filename = file.getFileName().toString().toLowerCase(Locale.ROOT);
+    return filename.endsWith(".jpg") || filename.endsWith(".jpeg") || filename.endsWith(".png")
+      || filename.endsWith(".webp") || filename.endsWith(".jfif");
   }
 
   private boolean deleteDirectory(Path directory) {

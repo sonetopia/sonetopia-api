@@ -15,7 +15,7 @@ class YtDlpServiceTest {
   void rejectsNonHttpUrls() {
     assertThrows(
       ResponseStatusException.class,
-      () -> ytDlpService.download("file:///tmp/audio.mp3", Path.of("target/test-storage"))
+      () -> ytDlpService.download("file:///tmp/audio.mp3", Path.of("target/test-storage"), false)
     );
   }
 
@@ -23,7 +23,7 @@ class YtDlpServiceTest {
   void rejectsPrivateHosts() {
     assertThrows(
       ResponseStatusException.class,
-      () -> ytDlpService.download("http://127.0.0.1/audio.mp3", Path.of("target/test-storage"))
+      () -> ytDlpService.download("http://127.0.0.1/audio.mp3", Path.of("target/test-storage"), false)
     );
   }
 }

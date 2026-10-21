@@ -21,4 +21,6 @@ public class FetchedAudioResponse {
   private Integer duration;
   private String mimeType;
   private Long fileSize;
+  private String coverMimeType;
+  private Long coverFileSize;
 }

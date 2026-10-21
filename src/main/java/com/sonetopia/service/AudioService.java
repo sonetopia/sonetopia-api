@@ -144,17 +144,21 @@ public class AudioService {
     Path tempDirectory = localAudioStorageService.createTempAudioDirectory(user.getId(), tempId);
 
     try {
-      Path audioPath = ytDlpService.download(request.getUrl(), tempDirectory);
+      Path audioPath = ytDlpService.download(request.getUrl(), tempDirectory, request.isWithThumbnail());
       AudioMetadata metadata;
       try {
         metadata = audioMetadataService.read(audioPath);
       } catch (IOException exception) {
         throw new ResponseStatusException(
-          HttpStatus.UNPROCESSABLE_ENTITY,
+          HttpStatus.UNPROCESSABLE_CONTENT,
           "Downloaded file is not a supported audio file",
           exception
         );
       }
+
+      Path thumbnailPath = localAudioStorageService
+        .resolveTempThumbnail(user.getId(), tempId)
+        .orElse(null);
 
       return FetchedAudioResponse.builder()
         .tempId(tempId)
@@ -165,6 +169,8 @@ public class AudioService {
         .duration(metadata.duration())
         .mimeType(mimeTypeFor(audioPath))
         .fileSize(Files.size(audioPath))
+        .coverMimeType(thumbnailPath == null ? null : coverMimeTypeFor(thumbnailPath))
+        .coverFileSize(thumbnailPath == null ? null : Files.size(thumbnailPath))
         .build();
     } catch (IOException | RuntimeException exception) {
       localAudioStorageService.deleteTempDirectory(user.getId(), tempId);
@@ -177,8 +183,10 @@ public class AudioService {
     validationService.validate(request);
 
     Path tempAudioPath = localAudioStorageService.resolveTempAudio(user.getId(), request.getTempId());
-    long uploadSize = Files.size(tempAudioPath);
-    storageQuotaService.addUsage(user, uploadSize);
+    Path thumbnailPath = localAudioStorageService.resolveTempThumbnail(user.getId(), request.getTempId()).orElse(null);
+    long audioSize = Files.size(tempAudioPath);
+    long coverSize = thumbnailPath == null ? 0L : Files.size(thumbnailPath);
+    storageQuotaService.addUsage(user, audioSize + coverSize);
 
     Audio audio = new Audio();
     audio.setId(UUID.randomUUID());
@@ -191,18 +199,30 @@ public class AudioService {
     audio.setCreatedAt(LocalDateTime.now());
     audio.setUpdatedAt(LocalDateTime.now());
     audio.setMimeType(mimeTypeFor(tempAudioPath));
-    audio.setFileSize(uploadSize);
+    audio.setFileSize(audioSize);
 
     try {
-      String storageKey = localAudioStorageService.promoteTempAudio(
+      var promotedAudio = localAudioStorageService.promoteTempAudio(
         user.getId(),
         audio.getId(),
         request.getTempId()
       );
-      audio.setStorageKey(storageKey);
+      audio.setStorageKey(promotedAudio.audioStorageKey());
 
-      Path audioPath = localAudioStorageService.resolveStorageKey(storageKey);
+      if (promotedAudio.coverStorageKey() == null && coverSize > 0) {
+        storageQuotaService.removeUsage(user, coverSize);
+      }
+
+      Path audioPath = localAudioStorageService.resolveStorageKey(promotedAudio.audioStorageKey());
       audio.setDuration(audioMetadataService.getDurationInSeconds(audioPath));
+
+      if (promotedAudio.coverStorageKey() != null) {
+        Path coverPath = localAudioStorageService.resolveStorageKey(promotedAudio.coverStorageKey());
+        audio.setCoverStorageKey(promotedAudio.coverStorageKey());
+        audio.setCoverMimeType(coverMimeTypeFor(coverPath));
+        audio.setCoverFileSize(Files.size(coverPath));
+        audio.setCoverVersion(1);
+      }
 
       audioRepository.save(audio);
 
@@ -231,6 +251,17 @@ public class AudioService {
       return "audio/ogg";
     }
     return "application/octet-stream";
+  }
+
+  private String coverMimeTypeFor(Path coverPath) {
+    String filename = coverPath.getFileName().toString().toLowerCase(Locale.ROOT);
+    if (filename.endsWith(".png")) {
+      return "image/png";
+    }
+    if (filename.endsWith(".webp")) {
+      return "image/webp";
+    }
+    return "image/jpeg";
   }
 
   @Transactional(readOnly = true)

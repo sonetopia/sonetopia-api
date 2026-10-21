@@ -37,7 +37,7 @@ public class YtDlpService {
     this.timeoutSeconds = timeoutSeconds;
   }
 
-  public Path download(String url, Path destinationDirectory) throws IOException {
+  public Path download(String url, Path destinationDirectory, boolean withThumbnail) throws IOException {
     validateUrl(url);
     Files.createDirectories(destinationDirectory);
 
@@ -55,6 +55,11 @@ public class YtDlpService {
     command.add("--max-filesize");
     command.add("100M");
     command.add("--embed-metadata");
+    if (withThumbnail) {
+      command.add("--write-thumbnail");
+      command.add("--convert-thumbnails");
+      command.add("jpg");
+    }
     command.add("-o");
     command.add(outputTemplate.toString());
     command.add(url);
@@ -96,8 +101,8 @@ public class YtDlpService {
     if (process.exitValue() != 0) {
       logger.warn("yt-dlp failed for {}: {}", url, processOutput);
       throw new ResponseStatusException(
-        HttpStatus.UNPROCESSABLE_ENTITY,
-        "Unable to fetch audio from the provided URL"
+        HttpStatus.UNPROCESSABLE_CONTENT,
+        "Unable to fetch from the provided URL"
       );
     }
 
@@ -105,21 +110,25 @@ public class YtDlpService {
     try (Stream<Path> files = Files.list(destinationDirectory)) {
       audioFile = files
         .filter(Files::isRegularFile)
-        .filter(file -> file.getFileName().toString().startsWith("audio."))
-        .filter(file -> !file.getFileName().toString().endsWith(".part"))
+        .filter(YtDlpService::isAudioFile)
         .findFirst()
         .orElseThrow(() -> new ResponseStatusException(
-          HttpStatus.UNPROCESSABLE_ENTITY,
-          "Unable to fetch audio from the provided URL"
+          HttpStatus.UNPROCESSABLE_CONTENT,
+          "Unable to fetch from the provided URL"
         ));
     }
 
     if (Files.size(audioFile) > MAX_AUDIO_BYTES) {
       Files.deleteIfExists(audioFile);
-      throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Audio file must not exceed 100 MiB");
+      throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Audio file must not exceed 100 MiB");
     }
 
     return audioFile;
+  }
+
+  private static boolean isAudioFile(Path file) {
+    String filename = file.getFileName().toString().toLowerCase(Locale.ROOT);
+    return filename.endsWith(".mp3") || filename.endsWith(".wav") || filename.endsWith(".ogg");
   }
 
   private void validateUrl(String url) {

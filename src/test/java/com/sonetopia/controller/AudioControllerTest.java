@@ -29,6 +29,7 @@ import com.sonetopia.entity.Audio;
 import com.sonetopia.entity.User;
 import com.sonetopia.model.AuthResponse;
 import com.sonetopia.model.CreateAudioFromTempRequest;
+import com.sonetopia.model.FetchAudioRequest;
 import com.sonetopia.model.LoginRequest;
 import com.sonetopia.model.WebResponse;
 import com.sonetopia.model.AudioResponse;
@@ -269,6 +270,54 @@ public class AudioControllerTest {
 
     Audio savedAudio = audioRepository.findById(webResponse.getData().getId()).orElseThrow();
     assertTrue(Files.exists(localAudioStorageService.resolveStorageKey(savedAudio.getStorageKey())));
+  }
+
+  @Test
+  void testCreateAudioFromTempWithThumbnail() throws Exception {
+    User user = userRepository.findByUsername("test").orElseThrow();
+    UUID tempId = UUID.randomUUID();
+    Path tempDirectory = localAudioStorageService.createTempAudioDirectory(user.getId(), tempId);
+
+    try (InputStream inputStream = new ClassPathResource("audio/sempurna.mp3").getInputStream()) {
+      Files.copy(inputStream, tempDirectory.resolve("audio.mp3"));
+    }
+    Files.write(tempDirectory.resolve("audio.jpg"), "fake-thumbnail".getBytes());
+
+    CreateAudioFromTempRequest request = CreateAudioFromTempRequest.builder()
+      .tempId(tempId)
+      .title("Imported Audio with Cover")
+      .type("music")
+      .build();
+
+    String responseJson = perform(
+      post("/api/v1/audio")
+        .contentType("application/json")
+        .content(objectMapper.writeValueAsString(request))
+      ).andExpectAll(
+        status().isOk()
+      ).andReturn()
+      .getResponse()
+      .getContentAsString();
+
+    WebResponse<AudioResponse> webResponse = objectMapper.readValue(responseJson, new TypeReference<WebResponse<AudioResponse>>() {});
+    assertNotNull(webResponse.getData());
+    assertEquals(1, webResponse.getData().getCoverVersion());
+    assertFalse(Files.exists(tempDirectory));
+
+    Audio savedAudio = audioRepository.findById(webResponse.getData().getId()).orElseThrow();
+    assertEquals("image/jpeg", savedAudio.getCoverMimeType());
+    assertEquals(14L, savedAudio.getCoverFileSize());
+    assertTrue(Files.exists(localAudioStorageService.resolveStorageKey(savedAudio.getCoverStorageKey())));
+  }
+
+  @Test
+  void testFetchAudioRequestAcceptsWithThumbnailOption() throws Exception {
+    FetchAudioRequest request = objectMapper.readValue(
+      "{\"url\":\"https://example.com/video\",\"with_thumbnail\":true}",
+      FetchAudioRequest.class
+    );
+
+    assertTrue(request.isWithThumbnail());
   }
 
   @Test
