@@ -17,6 +17,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -26,11 +28,13 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.sonetopia.entity.Audio;
 import com.sonetopia.entity.User;
 import com.sonetopia.model.AuthResponse;
+import com.sonetopia.model.CreateAudioFromTempRequest;
 import com.sonetopia.model.LoginRequest;
 import com.sonetopia.model.WebResponse;
 import com.sonetopia.model.AudioResponse;
 import com.sonetopia.repository.AudioRepository;
 import com.sonetopia.repository.UserRepository;
+import com.sonetopia.service.LocalAudioStorageService;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
@@ -52,6 +56,9 @@ public class AudioControllerTest {
 
   @Autowired
   private PasswordEncoder passwordEncoder;
+
+  @Autowired
+  private LocalAudioStorageService localAudioStorageService;
 
   private String accessToken;
 
@@ -226,6 +233,42 @@ public class AudioControllerTest {
         assertNull(webResponse.getData());
         assertEquals("Invalid or unsupported audio file", webResponse.getErrors());
       });
+  }
+
+  @Test
+  void testCreateAudioFromTempSuccess() throws Exception {
+    User user = userRepository.findByUsername("test").orElseThrow();
+    UUID tempId = UUID.randomUUID();
+    Path tempDirectory = localAudioStorageService.createTempAudioDirectory(user.getId(), tempId);
+
+    try (InputStream inputStream = new ClassPathResource("audio/sempurna.mp3").getInputStream()) {
+      Files.copy(inputStream, tempDirectory.resolve("audio.mp3"));
+    }
+
+    CreateAudioFromTempRequest request = CreateAudioFromTempRequest.builder()
+      .tempId(tempId)
+      .title("Imported Audio")
+      .type("music")
+      .build();
+
+    String responseJson = perform(
+      post("/api/v1/audio")
+        .contentType("application/json")
+        .content(objectMapper.writeValueAsString(request))
+      ).andExpectAll(
+        status().isOk()
+      ).andReturn()
+      .getResponse()
+      .getContentAsString();
+
+    WebResponse<AudioResponse> webResponse = objectMapper.readValue(responseJson, new TypeReference<WebResponse<AudioResponse>>() {});
+
+    assertNotNull(webResponse.getData());
+    assertEquals("Imported Audio", webResponse.getData().getTitle());
+    assertFalse(Files.exists(tempDirectory));
+
+    Audio savedAudio = audioRepository.findById(webResponse.getData().getId()).orElseThrow();
+    assertTrue(Files.exists(localAudioStorageService.resolveStorageKey(savedAudio.getStorageKey())));
   }
 
   @Test

@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.sonetopia.model.WebResponse;
@@ -19,6 +20,9 @@ import com.sonetopia.entity.User;
 import com.sonetopia.model.AudioCoverResponse;
 import com.sonetopia.model.AudioResponse;
 import com.sonetopia.model.CreateAudioRequest;
+import com.sonetopia.model.CreateAudioFromTempRequest;
+import com.sonetopia.model.FetchAudioRequest;
+import com.sonetopia.model.FetchedAudioResponse;
 import com.sonetopia.model.UpdateAudioRequest;
 import com.sonetopia.service.AudioService;
 
@@ -32,6 +36,18 @@ public class AudioController {
   public WebResponse<AudioResponse> create(@AuthenticationPrincipal User user, @ModelAttribute CreateAudioRequest request) throws IOException  {
     AudioResponse audioResponse = audioService.create(request, user);
     return WebResponse.<AudioResponse>builder().data(audioResponse).build();
+  }
+
+  @PostMapping(path = "/api/v1/audio", consumes = "application/json", produces = "application/json")
+  public WebResponse<AudioResponse> createFromTemp(@AuthenticationPrincipal User user, @RequestBody CreateAudioFromTempRequest request) throws IOException {
+    AudioResponse audioResponse = audioService.createFromTemp(request, user);
+    return WebResponse.<AudioResponse>builder().data(audioResponse).build();
+  }
+
+  @PostMapping(path = "/api/v1/audio/fetch", consumes = "application/json", produces = "application/json")
+  public WebResponse<FetchedAudioResponse> fetch(@AuthenticationPrincipal User user, @RequestBody FetchAudioRequest request) throws IOException {
+    FetchedAudioResponse fetchedAudioResponse = audioService.fetch(request, user);
+    return WebResponse.<FetchedAudioResponse>builder().data(fetchedAudioResponse).build();
   }
 
   @GetMapping (path = "/api/v1/audio/{audioId}", produces = "application/json")

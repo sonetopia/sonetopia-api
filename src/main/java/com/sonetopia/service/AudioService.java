@@ -1,13 +1,16 @@
 package com.sonetopia.service;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.http.HttpStatus;
@@ -16,9 +19,13 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.sonetopia.entity.Audio;
 import com.sonetopia.entity.User;
+import com.sonetopia.model.AudioMetadata;
 import com.sonetopia.model.AudioResponse;
 import com.sonetopia.model.AudioCoverResponse;
 import com.sonetopia.model.CreateAudioRequest;
+import com.sonetopia.model.CreateAudioFromTempRequest;
+import com.sonetopia.model.FetchAudioRequest;
+import com.sonetopia.model.FetchedAudioResponse;
 import com.sonetopia.model.UpdateAudioRequest;
 import com.sonetopia.repository.AudioRepository;
 
@@ -39,6 +46,12 @@ public class AudioService {
 
   @Autowired
   private AudioMetadataService audioMetadataService;
+
+  @Autowired
+  private YtDlpService ytDlpService;
+
+  @Value("${spring.storage.temp-audio-ttl-minutes:60}")
+  private long tempAudioTtlMinutes;
 
   private AudioResponse toAudioResponse(Audio audio) {
     return AudioResponse.builder()
@@ -121,6 +134,103 @@ public class AudioService {
 
       throw e;
     }
+  }
+
+  public FetchedAudioResponse fetch(FetchAudioRequest request, User user) throws IOException {
+    validationService.validate(request);
+    localAudioStorageService.cleanupExpiredTempAudio(Duration.ofMinutes(tempAudioTtlMinutes));
+
+    UUID tempId = UUID.randomUUID();
+    Path tempDirectory = localAudioStorageService.createTempAudioDirectory(user.getId(), tempId);
+
+    try {
+      Path audioPath = ytDlpService.download(request.getUrl(), tempDirectory);
+      AudioMetadata metadata;
+      try {
+        metadata = audioMetadataService.read(audioPath);
+      } catch (IOException exception) {
+        throw new ResponseStatusException(
+          HttpStatus.UNPROCESSABLE_ENTITY,
+          "Downloaded file is not a supported audio file",
+          exception
+        );
+      }
+
+      return FetchedAudioResponse.builder()
+        .tempId(tempId)
+        .title(metadata.title() != null ? metadata.title() : "Untitled")
+        .author(metadata.author())
+        .album(metadata.album())
+        .year(metadata.year())
+        .duration(metadata.duration())
+        .mimeType(mimeTypeFor(audioPath))
+        .fileSize(Files.size(audioPath))
+        .build();
+    } catch (IOException | RuntimeException exception) {
+      localAudioStorageService.deleteTempDirectory(user.getId(), tempId);
+      throw exception;
+    }
+  }
+
+  @Transactional(rollbackFor = {IOException.class, RuntimeException.class})
+  public AudioResponse createFromTemp(CreateAudioFromTempRequest request, User user) throws IOException {
+    validationService.validate(request);
+
+    Path tempAudioPath = localAudioStorageService.resolveTempAudio(user.getId(), request.getTempId());
+    long uploadSize = Files.size(tempAudioPath);
+    storageQuotaService.addUsage(user, uploadSize);
+
+    Audio audio = new Audio();
+    audio.setId(UUID.randomUUID());
+    audio.setUser(user);
+    audio.setTitle(request.getTitle());
+    audio.setType(request.getType());
+    audio.setAuthor(request.getAuthor());
+    audio.setAlbum(request.getAlbum());
+    audio.setYear(request.getYear());
+    audio.setCreatedAt(LocalDateTime.now());
+    audio.setUpdatedAt(LocalDateTime.now());
+    audio.setMimeType(mimeTypeFor(tempAudioPath));
+    audio.setFileSize(uploadSize);
+
+    try {
+      String storageKey = localAudioStorageService.promoteTempAudio(
+        user.getId(),
+        audio.getId(),
+        request.getTempId()
+      );
+      audio.setStorageKey(storageKey);
+
+      Path audioPath = localAudioStorageService.resolveStorageKey(storageKey);
+      audio.setDuration(audioMetadataService.getDurationInSeconds(audioPath));
+
+      audioRepository.save(audio);
+
+      return toAudioResponse(audio);
+    } catch (IOException | RuntimeException exception) {
+      localAudioStorageService.deleteTempDirectory(user.getId(), request.getTempId());
+      try {
+        localAudioStorageService.deleteAudioDirectory(user.getId(), audio.getId());
+      } catch (RuntimeException cleanupException) {
+        exception.addSuppressed(cleanupException);
+      }
+
+      throw exception;
+    }
+  }
+
+  private String mimeTypeFor(Path audioPath) {
+    String filename = audioPath.getFileName().toString().toLowerCase(Locale.ROOT);
+    if (filename.endsWith(".mp3")) {
+      return "audio/mpeg";
+    }
+    if (filename.endsWith(".wav")) {
+      return "audio/wav";
+    }
+    if (filename.endsWith(".ogg")) {
+      return "audio/ogg";
+    }
+    return "application/octet-stream";
   }
 
   @Transactional(readOnly = true)

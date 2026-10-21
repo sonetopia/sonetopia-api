@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.util.HexFormat;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -35,6 +36,8 @@ import com.sonetopia.repository.AudioRepository;
 
 @Service 
 public class LocalAudioStorageService implements AudioStorageService {
+
+  private static final String TEMP_DIRECTORY = "temp";
 
   private final Path rootLocation;
 
@@ -99,6 +102,79 @@ public class LocalAudioStorageService implements AudioStorageService {
     }
 
     return storageKey;
+  }
+
+  public Path createTempAudioDirectory(UUID userId, UUID tempId) throws IOException {
+    Path directory = tempDirectory(userId, tempId);
+    Files.createDirectories(directory);
+    return directory;
+  }
+
+  public Path resolveTempAudio(UUID userId, UUID tempId) {
+    Path directory = tempDirectory(userId, tempId);
+    if (!Files.isDirectory(directory)) {
+      throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Temporary audio not found");
+    }
+
+    try (Stream<Path> files = Files.list(directory)) {
+      return files
+        .filter(Files::isRegularFile)
+        .filter(file -> !file.getFileName().toString().endsWith(".part"))
+        .findFirst()
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Temporary audio not found"));
+    } catch (IOException exception) {
+      throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Temporary audio not found", exception);
+    }
+  }
+
+  public String promoteTempAudio(UUID userId, UUID audioId, UUID tempId) throws IOException {
+    Path source = resolveTempAudio(userId, tempId);
+    String extension = getExtension(source.getFileName().toString());
+    String storageKey = "users/" + userId + "/audio/" + audioId + "/audio." + extension;
+    Path destination = resolveStorageKey(storageKey);
+
+    Files.createDirectories(destination.getParent());
+    Files.move(source, destination, StandardCopyOption.REPLACE_EXISTING);
+    deleteTempDirectory(userId, tempId);
+
+    return storageKey;
+  }
+
+  public void deleteTempDirectory(UUID userId, UUID tempId) {
+    Path directory = tempDirectory(userId, tempId);
+    try {
+      deleteDirectory(directory);
+    } catch (RuntimeException ignored) {
+      // Temporary files are also removed by the TTL cleanup.
+    }
+  }
+
+  public void cleanupExpiredTempAudio(Duration ttl) {
+    Path tempRoot = tempRoot();
+    if (!Files.isDirectory(tempRoot)) {
+      return;
+    }
+
+    Instant cutoff = Instant.now().minus(ttl);
+    try (Stream<Path> users = Files.list(tempRoot)) {
+      users.filter(Files::isDirectory).forEach(userDirectory -> {
+        try (Stream<Path> temps = Files.list(userDirectory)) {
+          temps.filter(Files::isDirectory).forEach(tempDirectory -> {
+            try {
+              if (Files.getLastModifiedTime(tempDirectory).toInstant().isBefore(cutoff)) {
+                deleteDirectory(tempDirectory);
+              }
+            } catch (IOException | RuntimeException ignored) {
+              // Keep the stale directory; the next cleanup pass can retry.
+            }
+          });
+        } catch (IOException ignored) {
+          // Keep the stale user directory; the next cleanup pass can retry.
+        }
+      });
+    } catch (IOException ignored) {
+      // Temporary cleanup must not block an import.
+    }
   }
 
   @Override 
@@ -168,6 +244,22 @@ public class LocalAudioStorageService implements AudioStorageService {
       throw new IllegalArgumentException("Invalid directory path");
     }
 
+    return deleteDirectory(directory);
+  }
+
+  private Path tempRoot() {
+    return rootLocation.resolve(TEMP_DIRECTORY).normalize();
+  }
+
+  private Path tempDirectory(UUID userId, UUID tempId) {
+    Path directory = tempRoot().resolve(userId.toString()).resolve(tempId.toString()).normalize();
+    if (!directory.startsWith(tempRoot())) {
+      throw new IllegalArgumentException("Invalid temporary path");
+    }
+    return directory;
+  }
+
+  private boolean deleteDirectory(Path directory) {
     if (!Files.exists(directory)) {
       return false;
     }
@@ -193,7 +285,7 @@ public class LocalAudioStorageService implements AudioStorageService {
 
       return true;
     } catch (IOException e) {
-      throw new RuntimeException("Failed to delete audio directory: " + directory, e);
+      throw new RuntimeException("Failed to delete directory: " + directory, e);
     }
   }
 
