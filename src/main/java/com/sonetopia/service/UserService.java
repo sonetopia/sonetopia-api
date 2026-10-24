@@ -26,6 +26,9 @@ public class UserService {
   @Autowired
   private ValidationService validationService;
 
+  @Autowired
+  private LocalAudioStorageService localAudioStorageService;
+
   public UserResponse toUserResponse(User user) {
     return UserResponse.builder()
         .id(user.getId())
@@ -88,5 +91,14 @@ public class UserService {
     userRepository.save(currentUser);
 
     return toUserResponse(currentUser);
+  }
+
+  @Transactional
+  public void delete(User user) {
+    User currentUser = userRepository.findById(user.getId())
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+    localAudioStorageService.deleteUserDirectory(currentUser.getId());
+    userRepository.delete(currentUser);
   }
 }

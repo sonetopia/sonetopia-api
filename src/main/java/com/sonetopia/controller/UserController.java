@@ -2,6 +2,7 @@ package com.sonetopia.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -39,6 +40,12 @@ public class UserController {
   ) {
     UserResponse userResponse = userService.update(user, request);
     return WebResponse.<UserResponse>builder().data(userResponse).build();
+  }
+
+  @DeleteMapping(produces = "application/json")
+  public WebResponse<String> delete(@AuthenticationPrincipal User user) {
+    userService.delete(user);
+    return WebResponse.<String>builder().data("User deleted successfully").build();
   }
 
   @GetMapping(path = "/storage", produces = "application/json")

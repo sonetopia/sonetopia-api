@@ -294,6 +294,27 @@ public class LocalAudioStorageService implements AudioStorageService {
     return deleteDirectory(directory);
   }
 
+  public void deleteUserDirectory(UUID userId) {
+    Path userDirectory = rootLocation
+      .resolve("users")
+      .resolve(userId.toString())
+      .normalize();
+
+    if (!userDirectory.startsWith(rootLocation)) {
+      throw new IllegalArgumentException("Invalid user directory path");
+    }
+    deleteDirectory(userDirectory);
+
+    Path tempUserDirectory = tempRoot()
+      .resolve(userId.toString())
+      .normalize();
+
+    if (!tempUserDirectory.startsWith(tempRoot())) {
+      throw new IllegalArgumentException("Invalid temporary user directory path");
+    }
+    deleteDirectory(tempUserDirectory);
+  }
+
   private Path tempRoot() {
     return rootLocation.resolve(TEMP_DIRECTORY).normalize();
   }

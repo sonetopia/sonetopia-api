@@ -3,6 +3,7 @@ package com.sonetopia.controller;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpHeaders;
@@ -17,6 +18,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.time.LocalDateTime;
 import java.time.Instant;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.UUID;
 
 import jakarta.servlet.DispatcherType;
 
@@ -24,6 +29,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.when;
 
 import com.sonetopia.entity.User;
+import com.sonetopia.entity.Audio;
+import com.sonetopia.entity.Playlist;
 import com.sonetopia.model.AuthResponse;
 import com.sonetopia.model.GoogleLoginRequest;
 import com.sonetopia.model.LoginRequest;
@@ -33,6 +40,8 @@ import com.sonetopia.model.UpdateUserRequest;
 import com.sonetopia.model.UserResponse;
 import com.sonetopia.model.WebResponse;
 import com.sonetopia.repository.UserRepository;
+import com.sonetopia.repository.AudioRepository;
+import com.sonetopia.repository.PlaylistRepository;
 import com.sonetopia.security.JwtService;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
@@ -46,6 +55,15 @@ public class AuthControllerTest {
 
   @Autowired
   private UserRepository userRepository;
+
+  @Autowired
+  private AudioRepository audioRepository;
+
+  @Autowired
+  private PlaylistRepository playlistRepository;
+
+  @Value("${spring.storage.audio-path}")
+  private String audioPath;
 
   @Autowired
   private ObjectMapper objectMapper;
@@ -546,6 +564,61 @@ public class AuthControllerTest {
 
         assertEquals("test@gmail.com", response.getData().getEmail());
       });
+  }
+
+  @Test
+  void testDeleteCurrentUserRemovesResources() throws Exception {
+    User user = userRepository.findByUsername("test").orElseThrow();
+    String accessToken = login("test", "test");
+
+    Audio audio = new Audio();
+    audio.setId(UUID.randomUUID());
+    audio.setUser(user);
+    audio.setTitle("Song");
+    audio.setType("audio");
+    audio.setStorageKey("users/" + user.getId() + "/audio/" + audio.getId() + "/audio.mp3");
+    audio.setMimeType("audio/mpeg");
+    audio.setFileSize(10L);
+    audio.setCreatedAt(LocalDateTime.now());
+    audio.setUpdatedAt(LocalDateTime.now());
+    audioRepository.save(audio);
+
+    Playlist playlist = new Playlist();
+    playlist.setUser(user);
+    playlist.setTitle("Mix");
+    playlist.setCreatedAt(LocalDateTime.now());
+    playlist.setUpdatedAt(LocalDateTime.now());
+    playlistRepository.save(playlist);
+
+    Path userDirectory = Paths.get(audioPath, "users", user.getId().toString());
+    Path audioDirectory = userDirectory.resolve("audio").resolve(audio.getId().toString());
+    Files.createDirectories(audioDirectory);
+    Files.writeString(audioDirectory.resolve("audio.mp3"), "audio");
+
+    Path tempUserDirectory = Paths.get(audioPath, "temp", user.getId().toString());
+    Path tempDirectory = tempUserDirectory.resolve(UUID.randomUUID().toString());
+    Files.createDirectories(tempDirectory);
+    Files.writeString(tempDirectory.resolve("temp.mp3"), "audio");
+
+    mockMvc.perform(delete("/api/me")
+        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+      ).andExpectAll(
+        status().isOk()
+      );
+
+    assertTrue(userRepository.findById(user.getId()).isEmpty());
+    assertTrue(audioRepository.findById(audio.getId()).isEmpty());
+    assertTrue(playlistRepository.findById(playlist.getId()).isEmpty());
+    assertFalse(Files.exists(userDirectory));
+    assertFalse(Files.exists(tempUserDirectory));
+  }
+
+  @Test
+  void testDeleteCurrentUserUnauthorized() throws Exception {
+    mockMvc.perform(delete("/api/me"))
+      .andExpectAll(
+        status().isUnauthorized()
+      );
   }
 
   @Test
