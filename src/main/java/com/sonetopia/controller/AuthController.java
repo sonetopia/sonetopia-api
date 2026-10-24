@@ -1,14 +1,17 @@
 package com.sonetopia.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.sonetopia.model.AuthResponse;
 import com.sonetopia.model.LoginRequest;
 import com.sonetopia.model.RegisterRequest;
+import com.sonetopia.model.ResendVerificationRequest;
 import com.sonetopia.model.WebResponse;
 import com.sonetopia.service.AuthService;
 
@@ -29,5 +32,23 @@ public class AuthController {
   public WebResponse<AuthResponse> login(@RequestBody LoginRequest request) {
     AuthResponse authResponse = authService.login(request);
     return WebResponse.<AuthResponse>builder().data(authResponse).build();
+  }
+
+  @GetMapping(path = "/verify-email", produces = "application/json")
+  public WebResponse<String> verifyEmail(@RequestParam("token") String token) {
+    authService.verifyEmail(token);
+    return WebResponse.<String>builder().data("Email verified successfully").build();
+  }
+
+  @PostMapping(
+    path = "/resend-verification",
+    consumes = "application/json",
+    produces = "application/json"
+  )
+  public WebResponse<String> resendVerification(@RequestBody ResendVerificationRequest request) {
+    authService.resendVerificationEmail(request);
+    return WebResponse.<String>builder()
+      .data("If the email is registered and unverified, a verification email has been sent.")
+      .build();
   }
 }

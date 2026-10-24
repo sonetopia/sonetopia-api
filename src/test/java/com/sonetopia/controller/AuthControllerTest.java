@@ -21,10 +21,12 @@ import com.sonetopia.entity.User;
 import com.sonetopia.model.AuthResponse;
 import com.sonetopia.model.LoginRequest;
 import com.sonetopia.model.RegisterRequest;
+import com.sonetopia.model.ResendVerificationRequest;
 import com.sonetopia.model.UpdateUserRequest;
 import com.sonetopia.model.UserResponse;
 import com.sonetopia.model.WebResponse;
 import com.sonetopia.repository.UserRepository;
+import com.sonetopia.security.JwtService;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
@@ -44,16 +46,21 @@ public class AuthControllerTest {
   @Autowired
   private PasswordEncoder passwordEncoder;
 
+  @Autowired
+  private JwtService jwtService;
+
   @BeforeEach
   void setUp() {
     userRepository.deleteAll();
 
     User user = new User();
     user.setUsername("test");
+    user.setName("Test User");
     user.setEmail("test@gmail.com");
     user.setPassword(passwordEncoder.encode("test"));
     user.setStorageUsed(0L);
     user.setIsAdmin(false);
+    user.setEmailVerifiedAt(LocalDateTime.now());
     user.setCreatedAt(LocalDateTime.now());
     user.setUpdatedAt(LocalDateTime.now());
 
@@ -63,6 +70,7 @@ public class AuthControllerTest {
   @Test
   void testRegisterSuccess() throws Exception {
     RegisterRequest request = RegisterRequest.builder()
+        .name("New User")
         .username("newuser")
         .email("newuser@gmail.com")
         .password("secret123")
@@ -82,10 +90,13 @@ public class AuthControllerTest {
         assertNotNull(response.getData());
         assertNotNull(response.getData().getToken());
         assertEquals("Bearer", response.getData().getTokenType());
+        assertEquals("New User", response.getData().getUser().getName());
         assertEquals("newuser", response.getData().getUser().getUsername());
         assertEquals("newuser@gmail.com", response.getData().getUser().getEmail());
+        assertNull(response.getData().getUser().getEmailVerifiedAt());
 
         User savedUser = userRepository.findByUsername("newuser").orElseThrow();
+        assertNull(savedUser.getEmailVerifiedAt());
         assertNotEquals("secret123", savedUser.getPassword());
         assertTrue(passwordEncoder.matches("secret123", savedUser.getPassword()));
       });
@@ -94,6 +105,7 @@ public class AuthControllerTest {
   @Test
   void testRegisterValidationError() throws Exception {
     RegisterRequest request = RegisterRequest.builder()
+        .name("")
         .username("")
         .email("not-an-email")
         .password("123")
@@ -118,6 +130,7 @@ public class AuthControllerTest {
   @Test
   void testRegisterDuplicateUsername() throws Exception {
     RegisterRequest request = RegisterRequest.builder()
+        .name("Duplicate User")
         .username("test")
         .email("another@gmail.com")
         .password("secret123")
@@ -225,8 +238,8 @@ public class AuthControllerTest {
     String accessToken = login("test", "test");
 
     UpdateUserRequest request = UpdateUserRequest.builder()
+        .name("Updated User")
         .username("updated")
-        .email("updated@gmail.com")
         .password("newpassword")
         .currentPassword("test")
         .build();
@@ -244,8 +257,9 @@ public class AuthControllerTest {
         );
 
         assertNotNull(response.getData());
+        assertEquals("Updated User", response.getData().getName());
         assertEquals("updated", response.getData().getUsername());
-        assertEquals("updated@gmail.com", response.getData().getEmail());
+        assertEquals("test@gmail.com", response.getData().getEmail());
 
         User updatedUser = userRepository.findByUsername("updated").orElseThrow();
         assertTrue(passwordEncoder.matches("newpassword", updatedUser.getPassword()));
@@ -257,8 +271,8 @@ public class AuthControllerTest {
     String accessToken = login("test", "test");
 
     UpdateUserRequest request = UpdateUserRequest.builder()
+        .name("Updated User")
         .username("updated")
-        .email("updated@gmail.com")
         .build();
 
     mockMvc.perform(put("/api/me")
@@ -274,8 +288,9 @@ public class AuthControllerTest {
         );
 
         assertNotNull(response.getData());
+        assertEquals("Updated User", response.getData().getName());
         assertEquals("updated", response.getData().getUsername());
-        assertEquals("updated@gmail.com", response.getData().getEmail());
+        assertEquals("test@gmail.com", response.getData().getEmail());
       });
 
     User updatedUser = userRepository.findByUsername("updated").orElseThrow();
@@ -287,8 +302,8 @@ public class AuthControllerTest {
     String accessToken = login("test", "test");
 
     UpdateUserRequest request = UpdateUserRequest.builder()
+        .name("Test User")
         .username("test")
-        .email("test@gmail.com")
         .password("newpassword")
         .build();
 
@@ -317,8 +332,8 @@ public class AuthControllerTest {
     String accessToken = login("test", "test");
 
     UpdateUserRequest request = UpdateUserRequest.builder()
+        .name("Test User")
         .username("test")
-        .email("test@gmail.com")
         .password("newpassword")
         .currentPassword("wrong-password")
         .build();
@@ -347,8 +362,8 @@ public class AuthControllerTest {
     String accessToken = login("test", "test");
 
     UpdateUserRequest request = UpdateUserRequest.builder()
+        .name("")
         .username("")
-        .email("test@gmail.com")
         .build();
 
     mockMvc.perform(put("/api/me")
@@ -371,8 +386,8 @@ public class AuthControllerTest {
   @Test
   void testUpdateCurrentUserUnauthorized() throws Exception {
     UpdateUserRequest request = UpdateUserRequest.builder()
+        .name("Updated User")
         .username("updated")
-        .email("updated@gmail.com")
         .build();
 
     mockMvc.perform(put("/api/me")
@@ -381,6 +396,152 @@ public class AuthControllerTest {
       ).andExpectAll(
         status().isUnauthorized()
       );
+  }
+
+  @Test
+  void testUpdateCurrentUserIgnoresEmail() throws Exception {
+    String accessToken = login("test", "test");
+
+    String request = """
+        {"name":"Updated User","username":"updated","email":"changed@gmail.com"}
+        """;
+
+    mockMvc.perform(put("/api/me")
+        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+        .contentType("application/json")
+        .content(request)
+      ).andExpectAll(
+        status().isOk()
+      ).andDo(result -> {
+        WebResponse<UserResponse> response = objectMapper.readValue(
+          result.getResponse().getContentAsString(),
+          new TypeReference<WebResponse<UserResponse>>() {}
+        );
+
+        assertEquals("test@gmail.com", response.getData().getEmail());
+      });
+  }
+
+  @Test
+  void testVerifyEmailSuccess() throws Exception {
+    User user = createUnverifiedUser("unverified");
+    String token = jwtService.generateEmailVerificationToken(user);
+
+    mockMvc.perform(get("/api/auth/verify-email").param("token", token))
+      .andExpectAll(
+        status().isOk()
+      );
+
+    User verifiedUser = userRepository.findByUsername("unverified").orElseThrow();
+    assertNotNull(verifiedUser.getEmailVerifiedAt());
+  }
+
+  @Test
+  void testVerifyEmailRejectsInvalidToken() throws Exception {
+    mockMvc.perform(get("/api/auth/verify-email").param("token", "invalid-token"))
+      .andExpectAll(
+        status().isBadRequest()
+      );
+  }
+
+  @Test
+  void testResendVerificationForUnverifiedUser() throws Exception {
+    createUnverifiedUser("unverified");
+
+    ResendVerificationRequest request = ResendVerificationRequest.builder()
+        .email("unverified@gmail.com")
+        .build();
+
+    mockMvc.perform(post("/api/auth/resend-verification")
+        .contentType("application/json")
+        .content(objectMapper.writeValueAsString(request))
+      ).andExpectAll(
+        status().isOk()
+      ).andDo(result -> {
+        WebResponse<String> response = objectMapper.readValue(
+          result.getResponse().getContentAsString(),
+          new TypeReference<WebResponse<String>>() {}
+        );
+
+        assertNotNull(response.getData());
+        assertTrue(response.getData().contains("verification email has been sent"));
+
+        User user = userRepository.findByUsername("unverified").orElseThrow();
+        assertNotNull(user.getEmailVerificationSentAt());
+      });
+  }
+
+  @Test
+  void testResendVerificationRespectsCooldown() throws Exception {
+    User user = createUnverifiedUser("unverified");
+    user.setEmailVerificationSentAt(LocalDateTime.now());
+    userRepository.save(user);
+
+    ResendVerificationRequest request = ResendVerificationRequest.builder()
+        .email("unverified@gmail.com")
+        .build();
+
+    mockMvc.perform(post("/api/auth/resend-verification")
+        .contentType("application/json")
+        .content(objectMapper.writeValueAsString(request))
+      ).andExpectAll(
+        status().isTooManyRequests()
+      ).andDo(result -> {
+        WebResponse<String> response = objectMapper.readValue(
+          result.getResponse().getContentAsString(),
+          new TypeReference<WebResponse<String>>() {}
+        );
+
+        assertTrue(response.getErrors().contains("Please wait"));
+      });
+  }
+
+  @Test
+  void testResendVerificationDoesNotRevealUnknownEmail() throws Exception {
+    ResendVerificationRequest request = ResendVerificationRequest.builder()
+        .email("unknown@gmail.com")
+        .build();
+
+    mockMvc.perform(post("/api/auth/resend-verification")
+        .contentType("application/json")
+        .content(objectMapper.writeValueAsString(request))
+      ).andExpectAll(
+        status().isOk()
+      );
+  }
+
+  @Test
+  void testResendVerificationValidationError() throws Exception {
+    ResendVerificationRequest request = ResendVerificationRequest.builder()
+        .email("not-an-email")
+        .build();
+
+    mockMvc.perform(post("/api/auth/resend-verification")
+        .contentType("application/json")
+        .content(objectMapper.writeValueAsString(request))
+      ).andExpectAll(
+        status().isBadRequest()
+      );
+  }
+
+  @Test
+  void testUnverifiedUserCannotAccessResources() throws Exception {
+    createUnverifiedUser("unverified");
+    String accessToken = login("unverified", "test");
+
+    mockMvc.perform(get("/api/me")
+        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+      ).andExpectAll(
+        status().isForbidden()
+      ).andDo(result -> {
+        WebResponse<UserResponse> response = objectMapper.readValue(
+          result.getResponse().getContentAsString(),
+          new TypeReference<WebResponse<UserResponse>>() {}
+        );
+
+        assertNull(response.getData());
+        assertTrue(response.getErrors().contains("Email is not verified"));
+      });
   }
 
   @Test
@@ -416,5 +577,19 @@ public class AuthControllerTest {
     WebResponse<AuthResponse> response = objectMapper.readValue(responseJson, new TypeReference<WebResponse<AuthResponse>>() {});
 
     return response.getData().getToken();
+  }
+
+  private User createUnverifiedUser(String username) {
+    User user = new User();
+    user.setUsername(username);
+    user.setName("Unverified User");
+    user.setEmail(username + "@gmail.com");
+    user.setPassword(passwordEncoder.encode("test"));
+    user.setStorageUsed(0L);
+    user.setIsAdmin(false);
+    user.setCreatedAt(LocalDateTime.now());
+    user.setUpdatedAt(LocalDateTime.now());
+
+    return userRepository.save(user);
   }
 }

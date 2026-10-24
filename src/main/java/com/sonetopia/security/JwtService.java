@@ -23,6 +23,7 @@ import tools.jackson.databind.ObjectMapper;
 public class JwtService {
 
   private static final String HMAC_ALGORITHM = "HmacSHA256";
+  private static final String EMAIL_VERIFICATION_PURPOSE = "email_verification";
   private static final String ENCODED_HEADER = base64UrlEncode(
     "{\"alg\":\"HS256\",\"typ\":\"JWT\"}".getBytes(StandardCharsets.UTF_8)
   );
@@ -35,18 +36,32 @@ public class JwtService {
   @Value("${spring.security.jwt.expiration}")
   private long expiration;
 
+  @Value("${spring.security.email-verification.expiration:86400000}")
+  private long emailVerificationExpiration;
+
   public JwtService(ObjectMapper objectMapper) {
     this.objectMapper = objectMapper;
   }
 
   public String generateToken(User user) {
+    return generateToken(user, null, expiration);
+  }
+
+  public String generateEmailVerificationToken(User user) {
+    return generateToken(user, EMAIL_VERIFICATION_PURPOSE, emailVerificationExpiration);
+  }
+
+  private String generateToken(User user, String purpose, long expiresIn) {
     Instant issuedAt = Instant.now();
 
     Map<String, Object> claims = new LinkedHashMap<>();
     claims.put("sub", user.getId().toString());
     claims.put("username", user.getUsername());
+    if (purpose != null) {
+      claims.put("purpose", purpose);
+    }
     claims.put("iat", issuedAt.getEpochSecond());
-    claims.put("exp", issuedAt.plusMillis(expiration).getEpochSecond());
+    claims.put("exp", issuedAt.plusMillis(expiresIn).getEpochSecond());
 
     String encodedPayload = base64UrlEncode(objectMapper.writeValueAsBytes(claims));
     String signingInput = ENCODED_HEADER + "." + encodedPayload;
@@ -56,6 +71,25 @@ public class JwtService {
 
   public UUID extractUserId(String token) {
     Map<String, Object> claims = parseAndValidate(token);
+
+    if (claims.get("purpose") != null) {
+      throw new IllegalArgumentException("Invalid token");
+    }
+
+    return extractSubject(claims);
+  }
+
+  public UUID extractEmailVerificationUserId(String token) {
+    Map<String, Object> claims = parseAndValidate(token);
+
+    if (!EMAIL_VERIFICATION_PURPOSE.equals(claims.get("purpose"))) {
+      throw new IllegalArgumentException("Invalid token purpose");
+    }
+
+    return extractSubject(claims);
+  }
+
+  private UUID extractSubject(Map<String, Object> claims) {
 
     Object subject = claims.get("sub");
     if (subject == null) {

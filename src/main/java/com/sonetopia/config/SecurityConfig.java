@@ -23,6 +23,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.sonetopia.model.WebResponse;
 import com.sonetopia.repository.UserRepository;
+import com.sonetopia.security.EmailVerificationFilter;
 import com.sonetopia.security.JwtAuthenticationFilter;
 import com.sonetopia.security.JwtService;
 
@@ -102,6 +103,10 @@ public class SecurityConfig {
       }))
       .addFilterBefore(
         new JwtAuthenticationFilter(jwtService, userRepository),
+        UsernamePasswordAuthenticationFilter.class
+      )
+      .addFilterAfter(
+        new EmailVerificationFilter(objectMapper),
         UsernamePasswordAuthenticationFilter.class
       );
 

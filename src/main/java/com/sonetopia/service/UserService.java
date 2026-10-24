@@ -30,7 +30,9 @@ public class UserService {
     return UserResponse.builder()
         .id(user.getId())
         .username(user.getUsername())
+        .name(user.getName())
         .email(user.getEmail())
+        .emailVerifiedAt(user.getEmailVerifiedAt())
         .storageUsed(user.getStorageUsed())
         .isAdmin(user.getIsAdmin())
         .createdAt(user.getCreatedAt())
@@ -58,11 +60,6 @@ public class UserService {
       throw new ResponseStatusException(HttpStatus.CONFLICT, "Username already exists");
     }
 
-    if (!currentUser.getEmail().equals(request.getEmail())
-        && userRepository.findByEmail(request.getEmail()).isPresent()) {
-      throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already exists");
-    }
-
     boolean changingPassword = request.getPassword() != null && !request.getPassword().isBlank();
 
     if (changingPassword) {
@@ -81,7 +78,7 @@ public class UserService {
     }
 
     currentUser.setUsername(request.getUsername());
-    currentUser.setEmail(request.getEmail());
+    currentUser.setName(request.getName());
     currentUser.setUpdatedAt(LocalDateTime.now());
 
     if (changingPassword) {

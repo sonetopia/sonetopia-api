@@ -30,6 +30,8 @@ public class User {
   
   private String username;
 
+  private String name;
+
   private String email;
 
   private String password;
@@ -39,6 +41,12 @@ public class User {
   
   @Column(name = "is_admin")
   private Boolean isAdmin;
+
+  @Column(name = "email_verified_at")
+  private LocalDateTime emailVerifiedAt;
+
+  @Column(name = "email_verification_sent_at")
+  private LocalDateTime emailVerificationSentAt;
   
   @Column(name = "created_at")
   private LocalDateTime createdAt;

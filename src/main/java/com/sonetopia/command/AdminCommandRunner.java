@@ -64,6 +64,8 @@ public class AdminCommandRunner implements ApplicationRunner {
 
   private void createAdmin() {
     while (true) {
+      System.out.println("Creating a new admin user. Press Ctrl+C to cancel.");
+      String name = readRequiredLine("Name: ");
       String username = readRequiredLine("Username: ");
       String email = readRequiredLine("Email: ");
       String password = readConfirmedPassword();
@@ -79,6 +81,7 @@ public class AdminCommandRunner implements ApplicationRunner {
       }
 
       RegisterRequest request = RegisterRequest.builder()
+          .name(name)
           .username(username)
           .email(email)
           .password(password)
@@ -95,10 +98,12 @@ public class AdminCommandRunner implements ApplicationRunner {
 
       User user = new User();
       user.setUsername(request.getUsername());
+      user.setName(request.getName());
       user.setEmail(request.getEmail());
       user.setPassword(passwordEncoder.encode(request.getPassword()));
       user.setStorageUsed(0L);
       user.setIsAdmin(true);
+      user.setEmailVerifiedAt(now);
       user.setCreatedAt(now);
       user.setUpdatedAt(now);
 

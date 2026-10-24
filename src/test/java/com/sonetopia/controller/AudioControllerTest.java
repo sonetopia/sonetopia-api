@@ -70,10 +70,12 @@ public class AudioControllerTest {
 
     User user = new User();
     user.setUsername("test");
+    user.setName("Test User");
     user.setEmail("test@gmail.com");
     user.setPassword(passwordEncoder.encode("test"));
     user.setStorageUsed(0L);
     user.setIsAdmin(true);
+    user.setEmailVerifiedAt(LocalDateTime.now());
     user.setCreatedAt(LocalDateTime.now());
     user.setUpdatedAt(LocalDateTime.now());
 

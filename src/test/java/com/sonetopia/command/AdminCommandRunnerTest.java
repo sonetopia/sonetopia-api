@@ -67,6 +67,7 @@ class AdminCommandRunnerTest {
     verify(validationService).validate(any());
 
     User saved = captor.getValue();
+    assertEquals("Admin User", saved.getName());
     assertEquals("admin", saved.getUsername());
     assertEquals("admin@example.com", saved.getEmail());
     assertEquals("encoded-secret", saved.getPassword());
@@ -94,6 +95,7 @@ class AdminCommandRunnerTest {
   @Test
   void testCreateAdminRepromptsWhenPasswordsDoNotMatch() {
     ApplicationArguments args = createAdminArgs();
+    when(console.readLine("Name: ")).thenReturn("Admin User");
     when(console.readLine("Username: ")).thenReturn("admin");
     when(console.readLine("Email: ")).thenReturn("admin@example.com");
     when(console.readPassword("Password: "))
@@ -115,6 +117,7 @@ class AdminCommandRunnerTest {
   @Test
   void testCreateAdminRepromptsWhenUsernameExists() {
     ApplicationArguments args = createAdminArgs();
+    when(console.readLine("Name: ")).thenReturn("Admin User");
     when(console.readLine("Username: ")).thenReturn("admin", "newadmin");
     when(console.readLine("Email: ")).thenReturn("first@example.com", "new@example.com");
     when(console.readPassword("Password: "))
@@ -137,6 +140,7 @@ class AdminCommandRunnerTest {
   @Test
   void testCreateAdminFailsWhenInputIsExhausted() {
     ApplicationArguments args = createAdminArgs();
+    when(console.readLine("Name: ")).thenReturn("Admin User");
     when(console.readLine("Username: ")).thenReturn(null);
 
     assertThrows(IllegalStateException.class, () -> runner.run(args));
@@ -207,6 +211,7 @@ class AdminCommandRunnerTest {
   }
 
   private void stubCreatePrompts(String username, String email, String password) {
+    when(console.readLine("Name: ")).thenReturn("Admin User");
     when(console.readLine("Username: ")).thenReturn(username);
     when(console.readLine("Email: ")).thenReturn(email);
     when(console.readPassword("Password: ")).thenReturn(password.toCharArray());
