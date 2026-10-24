@@ -37,6 +37,9 @@ public class User {
   @Column(name = "google_id", unique = true)
   private String googleId;
 
+  @Column(name = "github_id", unique = true)
+  private String githubId;
+
   private String password;
   
   @Column(name = "storage_used")

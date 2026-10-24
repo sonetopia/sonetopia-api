@@ -22,6 +22,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.sonetopia.entity.User;
 import com.sonetopia.model.AuthResponse;
+import com.sonetopia.model.GithubLoginRequest;
 import com.sonetopia.model.GoogleLoginRequest;
 import com.sonetopia.model.LoginRequest;
 import com.sonetopia.model.RegisterRequest;
@@ -55,6 +56,9 @@ public class AuthService {
   @Autowired
   @Qualifier("googleJwtDecoder")
   private JwtDecoder googleJwtDecoder;
+
+  @Autowired
+  private GithubOAuthClient githubOAuthClient;
 
   @Value("${app.email.verification-resend-cooldown-seconds:60}")
   private long verificationResendCooldownSeconds;
@@ -202,8 +206,35 @@ public class AuthService {
       );
     }
 
+    return loginWithOAuthUser(
+      OAuthProvider.GOOGLE,
+      googleId,
+      email,
+      googleToken.getClaimAsString("name")
+    );
+  }
+
+  public AuthResponse loginWithGithub(GithubLoginRequest request) {
+    validationService.validate(request);
+
+    GithubOAuthClient.GithubUser githubUser = githubOAuthClient.fetchUser(request.getCode());
+
+    return loginWithOAuthUser(
+      OAuthProvider.GITHUB,
+      githubUser.id(),
+      githubUser.email(),
+      githubUser.name()
+    );
+  }
+
+  private AuthResponse loginWithOAuthUser(
+      OAuthProvider provider,
+      String providerId,
+      String email,
+      String name
+  ) {
     LocalDateTime now = LocalDateTime.now();
-    User user = userRepository.findByGoogleId(googleId).orElse(null);
+    User user = findUserByProviderId(provider, providerId);
 
     if (user == null) {
       user = userRepository.findByEmail(email).orElse(null);
@@ -211,19 +242,19 @@ public class AuthService {
       if (user == null) {
         user = new User();
         user.setUsername(generateUsername(email));
-        user.setName(resolveName(googleToken, email));
+        user.setName(resolveName(name, email));
         user.setEmail(email);
         user.setStorageUsed(0L);
         user.setIsAdmin(false);
         user.setCreatedAt(now);
-      } else if (user.getGoogleId() != null) {
+      } else if (getProviderId(provider, user) != null) {
         throw new ResponseStatusException(
           HttpStatus.CONFLICT,
-          "Email is already linked to another Google account"
+          "Email is already linked to another " + provider.displayName + " account"
         );
       }
 
-      user.setGoogleId(googleId);
+      setProviderId(provider, user, providerId);
       if (user.getEmailVerifiedAt() == null) {
         user.setEmailVerifiedAt(now);
       }
@@ -236,6 +267,27 @@ public class AuthService {
     }
 
     return buildAuthResponse(user);
+  }
+
+  private User findUserByProviderId(OAuthProvider provider, String providerId) {
+    return switch (provider) {
+      case GOOGLE -> userRepository.findByGoogleId(providerId).orElse(null);
+      case GITHUB -> userRepository.findByGithubId(providerId).orElse(null);
+    };
+  }
+
+  private String getProviderId(OAuthProvider provider, User user) {
+    return switch (provider) {
+      case GOOGLE -> user.getGoogleId();
+      case GITHUB -> user.getGithubId();
+    };
+  }
+
+  private void setProviderId(OAuthProvider provider, User user, String providerId) {
+    switch (provider) {
+      case GOOGLE -> user.setGoogleId(providerId);
+      case GITHUB -> user.setGithubId(providerId);
+    }
   }
 
   private String generateUsername(String email) {
@@ -257,8 +309,7 @@ public class AuthService {
     return candidate;
   }
 
-  private String resolveName(Jwt googleToken, String email) {
-    String name = googleToken.getClaimAsString("name");
+  private String resolveName(String name, String email) {
     if (name == null || name.isBlank()) {
       int at = email.indexOf('@');
       name = at > 0 ? email.substring(0, at) : email;
@@ -273,5 +324,16 @@ public class AuthService {
         .expiresIn(jwtService.getExpirationSeconds())
         .user(userService.toUserResponse(user))
         .build();
+  }
+
+  private enum OAuthProvider {
+    GOOGLE("Google"),
+    GITHUB("GitHub");
+
+    private final String displayName;
+
+    OAuthProvider(String displayName) {
+      this.displayName = displayName;
+    }
   }
 }

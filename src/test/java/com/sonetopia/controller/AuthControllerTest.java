@@ -7,12 +7,14 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.server.ResponseStatusException;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -32,6 +34,7 @@ import com.sonetopia.entity.User;
 import com.sonetopia.entity.Audio;
 import com.sonetopia.entity.Playlist;
 import com.sonetopia.model.AuthResponse;
+import com.sonetopia.model.GithubLoginRequest;
 import com.sonetopia.model.GoogleLoginRequest;
 import com.sonetopia.model.LoginRequest;
 import com.sonetopia.model.RegisterRequest;
@@ -43,6 +46,7 @@ import com.sonetopia.repository.UserRepository;
 import com.sonetopia.repository.AudioRepository;
 import com.sonetopia.repository.PlaylistRepository;
 import com.sonetopia.security.JwtService;
+import com.sonetopia.service.GithubOAuthClient;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
@@ -76,6 +80,9 @@ public class AuthControllerTest {
 
   @MockitoBean
   private JwtDecoder googleJwtDecoder;
+
+  @MockitoBean
+  private GithubOAuthClient githubOAuthClient;
 
   @BeforeEach
   void setUp() {
@@ -347,6 +354,96 @@ public class AuthControllerTest {
       );
 
     assertTrue(userRepository.findByEmail("unverified@gmail.com").isEmpty());
+  }
+
+  @Test
+  void testGithubLoginRegistersNewUser() throws Exception {
+    when(githubOAuthClient.fetchUser("github-code"))
+      .thenReturn(new GithubOAuthClient.GithubUser("github-123", "github@gmail.com", "GitHub User"));
+
+    GithubLoginRequest request = GithubLoginRequest.builder()
+        .code("github-code")
+        .build();
+
+    mockMvc.perform(post("/api/auth/github")
+        .contentType("application/json")
+        .content(objectMapper.writeValueAsString(request))
+      ).andExpectAll(
+        status().isOk()
+      ).andDo(result -> {
+        WebResponse<AuthResponse> response = objectMapper.readValue(
+          result.getResponse().getContentAsString(),
+          new TypeReference<WebResponse<AuthResponse>>() {}
+        );
+
+        assertNotNull(response.getData().getToken());
+        assertEquals("github@gmail.com", response.getData().getUser().getEmail());
+        assertNotNull(response.getData().getUser().getEmailVerifiedAt());
+
+        User savedUser = userRepository.findByEmail("github@gmail.com").orElseThrow();
+        assertEquals("github-123", savedUser.getGithubId());
+        assertNull(savedUser.getPassword());
+      });
+  }
+
+  @Test
+  void testGithubLoginLinksExistingEmail() throws Exception {
+    User existingUser = userRepository.findByUsername("test").orElseThrow();
+
+    when(githubOAuthClient.fetchUser("link-github-code"))
+      .thenReturn(new GithubOAuthClient.GithubUser("github-456", "test@gmail.com", "Test User"));
+
+    GithubLoginRequest request = GithubLoginRequest.builder()
+        .code("link-github-code")
+        .build();
+
+    mockMvc.perform(post("/api/auth/github")
+        .contentType("application/json")
+        .content(objectMapper.writeValueAsString(request))
+      ).andExpectAll(
+        status().isOk()
+      ).andDo(result -> {
+        WebResponse<AuthResponse> response = objectMapper.readValue(
+          result.getResponse().getContentAsString(),
+          new TypeReference<WebResponse<AuthResponse>>() {}
+        );
+
+        assertEquals(existingUser.getId(), response.getData().getUser().getId());
+
+        User linkedUser = userRepository.findByUsername("test").orElseThrow();
+        assertEquals("github-456", linkedUser.getGithubId());
+      });
+  }
+
+  @Test
+  void testGithubLoginRejectsInvalidCode() throws Exception {
+    when(githubOAuthClient.fetchUser("bad-github-code"))
+      .thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid GitHub authorization code"));
+
+    GithubLoginRequest request = GithubLoginRequest.builder()
+        .code("bad-github-code")
+        .build();
+
+    mockMvc.perform(post("/api/auth/github")
+        .contentType("application/json")
+        .content(objectMapper.writeValueAsString(request))
+      ).andExpectAll(
+        status().isUnauthorized()
+      );
+  }
+
+  @Test
+  void testGithubLoginValidationError() throws Exception {
+    GithubLoginRequest request = GithubLoginRequest.builder()
+        .code("")
+        .build();
+
+    mockMvc.perform(post("/api/auth/github")
+        .contentType("application/json")
+        .content(objectMapper.writeValueAsString(request))
+      ).andExpectAll(
+        status().isBadRequest()
+      );
   }
 
   @Test

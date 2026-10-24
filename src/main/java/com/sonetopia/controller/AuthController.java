@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.sonetopia.model.AuthResponse;
+import com.sonetopia.model.GithubLoginRequest;
 import com.sonetopia.model.GoogleLoginRequest;
 import com.sonetopia.model.LoginRequest;
 import com.sonetopia.model.RegisterRequest;
@@ -38,6 +39,12 @@ public class AuthController {
   @PostMapping(path = "/google", consumes = "application/json", produces = "application/json")
   public WebResponse<AuthResponse> googleLogin(@RequestBody GoogleLoginRequest request) {
     AuthResponse authResponse = authService.loginWithGoogle(request);
+    return WebResponse.<AuthResponse>builder().data(authResponse).build();
+  }
+
+  @PostMapping(path = "/github", consumes = "application/json", produces = "application/json")
+  public WebResponse<AuthResponse> githubLogin(@RequestBody GithubLoginRequest request) {
+    AuthResponse authResponse = authService.loginWithGithub(request);
     return WebResponse.<AuthResponse>builder().data(authResponse).build();
   }
 
