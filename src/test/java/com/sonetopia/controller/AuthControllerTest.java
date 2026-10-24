@@ -34,6 +34,7 @@ import com.sonetopia.entity.User;
 import com.sonetopia.entity.Audio;
 import com.sonetopia.entity.Playlist;
 import com.sonetopia.model.AuthResponse;
+import com.sonetopia.model.AppleLoginRequest;
 import com.sonetopia.model.GithubLoginRequest;
 import com.sonetopia.model.GoogleLoginRequest;
 import com.sonetopia.model.LoginRequest;
@@ -47,6 +48,7 @@ import com.sonetopia.repository.AudioRepository;
 import com.sonetopia.repository.PlaylistRepository;
 import com.sonetopia.security.JwtService;
 import com.sonetopia.service.GithubOAuthClient;
+import com.sonetopia.service.AppleTokenVerifier;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
@@ -83,6 +85,9 @@ public class AuthControllerTest {
 
   @MockitoBean
   private GithubOAuthClient githubOAuthClient;
+
+  @MockitoBean
+  private AppleTokenVerifier appleTokenVerifier;
 
   @BeforeEach
   void setUp() {
@@ -439,6 +444,141 @@ public class AuthControllerTest {
         .build();
 
     mockMvc.perform(post("/api/auth/github")
+        .contentType("application/json")
+        .content(objectMapper.writeValueAsString(request))
+      ).andExpectAll(
+        status().isBadRequest()
+      );
+  }
+
+  @Test
+  void testAppleLoginRegistersNewUser() throws Exception {
+    when(appleTokenVerifier.verify("new-apple-token"))
+      .thenReturn(new AppleTokenVerifier.AppleIdentity("apple-sub-new", "apple@example.com", true));
+
+    AppleLoginRequest request = AppleLoginRequest.builder()
+        .idToken("new-apple-token")
+        .name("Apple User")
+        .build();
+
+    mockMvc.perform(post("/api/auth/apple")
+        .contentType("application/json")
+        .content(objectMapper.writeValueAsString(request))
+      ).andExpectAll(
+        status().isOk()
+      ).andDo(result -> {
+        WebResponse<AuthResponse> response = objectMapper.readValue(
+          result.getResponse().getContentAsString(),
+          new TypeReference<WebResponse<AuthResponse>>() {}
+        );
+
+        assertNotNull(response.getData().getToken());
+        assertEquals("apple@example.com", response.getData().getUser().getEmail());
+        assertEquals("Apple User", response.getData().getUser().getName());
+        assertNotNull(response.getData().getUser().getEmailVerifiedAt());
+
+        User savedUser = userRepository.findByEmail("apple@example.com").orElseThrow();
+        assertEquals("apple-sub-new", savedUser.getAppleId());
+        assertNull(savedUser.getPassword());
+      });
+  }
+
+  @Test
+  void testAppleLoginLinksExistingEmail() throws Exception {
+    User existingUser = userRepository.findByUsername("test").orElseThrow();
+
+    when(appleTokenVerifier.verify("link-apple-token"))
+      .thenReturn(new AppleTokenVerifier.AppleIdentity("apple-sub-link", "test@gmail.com", true));
+
+    AppleLoginRequest request = AppleLoginRequest.builder()
+        .idToken("link-apple-token")
+        .build();
+
+    mockMvc.perform(post("/api/auth/apple")
+        .contentType("application/json")
+        .content(objectMapper.writeValueAsString(request))
+      ).andExpectAll(
+        status().isOk()
+      ).andDo(result -> {
+        WebResponse<AuthResponse> response = objectMapper.readValue(
+          result.getResponse().getContentAsString(),
+          new TypeReference<WebResponse<AuthResponse>>() {}
+        );
+
+        assertEquals(existingUser.getId(), response.getData().getUser().getId());
+
+        User linkedUser = userRepository.findByUsername("test").orElseThrow();
+        assertEquals("apple-sub-link", linkedUser.getAppleId());
+      });
+  }
+
+  @Test
+  void testAppleLoginAllowsReturningUserWithoutEmail() throws Exception {
+    User appleUser = new User();
+    appleUser.setUsername("appleuser");
+    appleUser.setName("Apple User");
+    appleUser.setEmail("apple@example.com");
+    appleUser.setAppleId("apple-sub-returning");
+    appleUser.setStorageUsed(0L);
+    appleUser.setIsAdmin(false);
+    appleUser.setEmailVerifiedAt(LocalDateTime.now());
+    appleUser.setCreatedAt(LocalDateTime.now());
+    appleUser.setUpdatedAt(LocalDateTime.now());
+    userRepository.save(appleUser);
+
+    when(appleTokenVerifier.verify("returning-apple-token"))
+      .thenReturn(new AppleTokenVerifier.AppleIdentity("apple-sub-returning", null, false));
+
+    AppleLoginRequest request = AppleLoginRequest.builder()
+        .idToken("returning-apple-token")
+        .build();
+
+    mockMvc.perform(post("/api/auth/apple")
+        .contentType("application/json")
+        .content(objectMapper.writeValueAsString(request))
+      ).andExpectAll(
+        status().isOk()
+      ).andDo(result -> {
+        WebResponse<AuthResponse> response = objectMapper.readValue(
+          result.getResponse().getContentAsString(),
+          new TypeReference<WebResponse<AuthResponse>>() {}
+        );
+
+        assertEquals(appleUser.getId(), response.getData().getUser().getId());
+        assertEquals("apple@example.com", response.getData().getUser().getEmail());
+      });
+  }
+
+  @Test
+  void testAppleLoginRejectsUnverifiedEmail() throws Exception {
+    when(appleTokenVerifier.verify("unverified-apple-token"))
+      .thenReturn(new AppleTokenVerifier.AppleIdentity(
+        "apple-sub-unverified",
+        "unverified@example.com",
+        false
+      ));
+
+    AppleLoginRequest request = AppleLoginRequest.builder()
+        .idToken("unverified-apple-token")
+        .build();
+
+    mockMvc.perform(post("/api/auth/apple")
+        .contentType("application/json")
+        .content(objectMapper.writeValueAsString(request))
+      ).andExpectAll(
+        status().isUnauthorized()
+      );
+
+    assertTrue(userRepository.findByEmail("unverified@example.com").isEmpty());
+  }
+
+  @Test
+  void testAppleLoginValidationError() throws Exception {
+    AppleLoginRequest request = AppleLoginRequest.builder()
+        .idToken("")
+        .build();
+
+    mockMvc.perform(post("/api/auth/apple")
         .contentType("application/json")
         .content(objectMapper.writeValueAsString(request))
       ).andExpectAll(

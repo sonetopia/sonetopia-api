@@ -21,6 +21,8 @@ public interface UserRepository extends JpaRepository<User, UUID>, JpaSpecificat
 
   Optional<User> findByGithubId(String githubId);
 
+  Optional<User> findByAppleId(String appleId);
+
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("select u from User u where u.id = :id")
   Optional<User> findByIdForUpdate(UUID id);

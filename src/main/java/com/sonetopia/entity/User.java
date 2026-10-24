@@ -40,6 +40,9 @@ public class User {
   @Column(name = "github_id", unique = true)
   private String githubId;
 
+  @Column(name = "apple_id", unique = true)
+  private String appleId;
+
   private String password;
   
   @Column(name = "storage_used")

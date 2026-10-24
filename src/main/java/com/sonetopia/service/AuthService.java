@@ -22,6 +22,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.sonetopia.entity.User;
 import com.sonetopia.model.AuthResponse;
+import com.sonetopia.model.AppleLoginRequest;
 import com.sonetopia.model.GithubLoginRequest;
 import com.sonetopia.model.GoogleLoginRequest;
 import com.sonetopia.model.LoginRequest;
@@ -59,6 +60,9 @@ public class AuthService {
 
   @Autowired
   private GithubOAuthClient githubOAuthClient;
+
+  @Autowired
+  private AppleTokenVerifier appleTokenVerifier;
 
   @Value("${app.email.verification-resend-cooldown-seconds:60}")
   private long verificationResendCooldownSeconds;
@@ -227,6 +231,30 @@ public class AuthService {
     );
   }
 
+  public AuthResponse loginWithApple(AppleLoginRequest request) {
+    validationService.validate(request);
+
+    AppleTokenVerifier.AppleIdentity identity = appleTokenVerifier.verify(request.getIdToken());
+    User existingUser = userRepository.findByAppleId(identity.subject()).orElse(null);
+
+    if (existingUser == null
+        && (!identity.emailVerified()
+          || identity.email() == null
+          || identity.email().isBlank())) {
+      throw new ResponseStatusException(
+        HttpStatus.UNAUTHORIZED,
+        "Apple account email is not verified"
+      );
+    }
+
+    return loginWithOAuthUser(
+      OAuthProvider.APPLE,
+      identity.subject(),
+      identity.email(),
+      request.getName()
+    );
+  }
+
   private AuthResponse loginWithOAuthUser(
       OAuthProvider provider,
       String providerId,
@@ -237,6 +265,13 @@ public class AuthService {
     User user = findUserByProviderId(provider, providerId);
 
     if (user == null) {
+      if (email == null || email.isBlank()) {
+        throw new ResponseStatusException(
+          HttpStatus.UNAUTHORIZED,
+          provider.displayName + " account email is not available"
+        );
+      }
+
       user = userRepository.findByEmail(email).orElse(null);
 
       if (user == null) {
@@ -273,6 +308,7 @@ public class AuthService {
     return switch (provider) {
       case GOOGLE -> userRepository.findByGoogleId(providerId).orElse(null);
       case GITHUB -> userRepository.findByGithubId(providerId).orElse(null);
+      case APPLE -> userRepository.findByAppleId(providerId).orElse(null);
     };
   }
 
@@ -280,6 +316,7 @@ public class AuthService {
     return switch (provider) {
       case GOOGLE -> user.getGoogleId();
       case GITHUB -> user.getGithubId();
+      case APPLE -> user.getAppleId();
     };
   }
 
@@ -287,6 +324,7 @@ public class AuthService {
     switch (provider) {
       case GOOGLE -> user.setGoogleId(providerId);
       case GITHUB -> user.setGithubId(providerId);
+      case APPLE -> user.setAppleId(providerId);
     }
   }
 
@@ -328,7 +366,8 @@ public class AuthService {
 
   private enum OAuthProvider {
     GOOGLE("Google"),
-    GITHUB("GitHub");
+    GITHUB("GitHub"),
+    APPLE("Apple");
 
     private final String displayName;
 
