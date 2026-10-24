@@ -34,6 +34,9 @@ public class User {
 
   private String email;
 
+  @Column(name = "google_id", unique = true)
+  private String googleId;
+
   private String password;
   
   @Column(name = "storage_used")

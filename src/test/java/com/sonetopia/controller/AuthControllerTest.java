@@ -7,18 +7,25 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtException;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import java.time.LocalDateTime;
+import java.time.Instant;
 
 import jakarta.servlet.DispatcherType;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.when;
 
 import com.sonetopia.entity.User;
 import com.sonetopia.model.AuthResponse;
+import com.sonetopia.model.GoogleLoginRequest;
 import com.sonetopia.model.LoginRequest;
 import com.sonetopia.model.RegisterRequest;
 import com.sonetopia.model.ResendVerificationRequest;
@@ -48,6 +55,9 @@ public class AuthControllerTest {
 
   @Autowired
   private JwtService jwtService;
+
+  @MockitoBean
+  private JwtDecoder googleJwtDecoder;
 
   @BeforeEach
   void setUp() {
@@ -203,6 +213,122 @@ public class AuthControllerTest {
       ).andExpectAll(
         status().isUnauthorized()
       );
+  }
+
+  @Test
+  void testGoogleLoginRegistersNewUser() throws Exception {
+    when(googleJwtDecoder.decode("new-user-token"))
+      .thenReturn(googleToken("google-sub-new", "google@gmail.com", true));
+
+    GoogleLoginRequest request = GoogleLoginRequest.builder()
+        .idToken("new-user-token")
+        .build();
+
+    mockMvc.perform(post("/api/auth/google")
+        .contentType("application/json")
+        .content(objectMapper.writeValueAsString(request))
+      ).andExpectAll(
+        status().isOk()
+      ).andDo(result -> {
+        WebResponse<AuthResponse> response = objectMapper.readValue(
+          result.getResponse().getContentAsString(),
+          new TypeReference<WebResponse<AuthResponse>>() {}
+        );
+
+        assertNotNull(response.getData().getToken());
+        assertEquals("google@gmail.com", response.getData().getUser().getEmail());
+        assertNotNull(response.getData().getUser().getEmailVerifiedAt());
+
+        User savedUser = userRepository.findByEmail("google@gmail.com").orElseThrow();
+        assertEquals("google-sub-new", savedUser.getGoogleId());
+        assertNull(savedUser.getPassword());
+      });
+  }
+
+  @Test
+  void testGoogleLoginLinksExistingEmail() throws Exception {
+    User existingUser = userRepository.findByUsername("test").orElseThrow();
+
+    when(googleJwtDecoder.decode("link-user-token"))
+      .thenReturn(googleToken("google-sub-link", "test@gmail.com", true));
+
+    GoogleLoginRequest request = GoogleLoginRequest.builder()
+        .idToken("link-user-token")
+        .build();
+
+    mockMvc.perform(post("/api/auth/google")
+        .contentType("application/json")
+        .content(objectMapper.writeValueAsString(request))
+      ).andExpectAll(
+        status().isOk()
+      ).andDo(result -> {
+        WebResponse<AuthResponse> response = objectMapper.readValue(
+          result.getResponse().getContentAsString(),
+          new TypeReference<WebResponse<AuthResponse>>() {}
+        );
+
+        assertEquals(existingUser.getId(), response.getData().getUser().getId());
+
+        User linkedUser = userRepository.findByUsername("test").orElseThrow();
+        assertEquals("google-sub-link", linkedUser.getGoogleId());
+      });
+  }
+
+  @Test
+  void testGoogleLoginReusesGoogleUser() throws Exception {
+    when(googleJwtDecoder.decode("reuse-user-token"))
+      .thenReturn(googleToken("google-sub-reuse", "reuse@gmail.com", true));
+
+    GoogleLoginRequest request = GoogleLoginRequest.builder()
+        .idToken("reuse-user-token")
+        .build();
+
+    for (int i = 0; i < 2; i++) {
+      mockMvc.perform(post("/api/auth/google")
+          .contentType("application/json")
+          .content(objectMapper.writeValueAsString(request))
+        ).andExpectAll(
+          status().isOk()
+        );
+    }
+
+    assertEquals(2L, userRepository.count());
+  }
+
+  @Test
+  void testGoogleLoginRejectsInvalidToken() throws Exception {
+    when(googleJwtDecoder.decode("invalid-google-token"))
+      .thenThrow(new JwtException("invalid"));
+
+    GoogleLoginRequest request = GoogleLoginRequest.builder()
+        .idToken("invalid-google-token")
+        .build();
+
+    mockMvc.perform(post("/api/auth/google")
+        .contentType("application/json")
+        .content(objectMapper.writeValueAsString(request))
+      ).andExpectAll(
+        status().isUnauthorized()
+      );
+  }
+
+  @Test
+  void testGoogleLoginRejectsUnverifiedEmail() throws Exception {
+    when(googleJwtDecoder.decode("unverified-google-token"))
+      .thenReturn(googleToken("google-sub-unverified", "unverified@gmail.com", false));
+
+    GoogleLoginRequest request = GoogleLoginRequest.builder()
+        .idToken("unverified-google-token")
+        .build();
+
+    mockMvc.perform(post("/api/auth/google")
+        .contentType("application/json")
+        .content(objectMapper.writeValueAsString(request))
+      ).andExpectAll(
+        status().isUnauthorized()
+      );
+
+    assertTrue(userRepository.findByEmail("unverified@gmail.com").isEmpty());
   }
 
   @Test
@@ -577,6 +703,18 @@ public class AuthControllerTest {
     WebResponse<AuthResponse> response = objectMapper.readValue(responseJson, new TypeReference<WebResponse<AuthResponse>>() {});
 
     return response.getData().getToken();
+  }
+
+  private Jwt googleToken(String subject, String email, boolean emailVerified) {
+    return Jwt.withTokenValue("google-token")
+        .header("alg", "RS256")
+        .subject(subject)
+        .claim("email", email)
+        .claim("email_verified", emailVerified)
+        .claim("name", "Google User")
+        .issuedAt(Instant.now())
+        .expiresAt(Instant.now().plusSeconds(3600))
+        .build();
   }
 
   private User createUnverifiedUser(String username) {

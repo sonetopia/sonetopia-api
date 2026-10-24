@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.sonetopia.model.AuthResponse;
+import com.sonetopia.model.GoogleLoginRequest;
 import com.sonetopia.model.LoginRequest;
 import com.sonetopia.model.RegisterRequest;
 import com.sonetopia.model.ResendVerificationRequest;
@@ -31,6 +32,12 @@ public class AuthController {
   @PostMapping(path = "/login", consumes = "application/json", produces = "application/json")
   public WebResponse<AuthResponse> login(@RequestBody LoginRequest request) {
     AuthResponse authResponse = authService.login(request);
+    return WebResponse.<AuthResponse>builder().data(authResponse).build();
+  }
+
+  @PostMapping(path = "/google", consumes = "application/json", produces = "application/json")
+  public WebResponse<AuthResponse> googleLogin(@RequestBody GoogleLoginRequest request) {
+    AuthResponse authResponse = authService.loginWithGoogle(request);
     return WebResponse.<AuthResponse>builder().data(authResponse).build();
   }
 

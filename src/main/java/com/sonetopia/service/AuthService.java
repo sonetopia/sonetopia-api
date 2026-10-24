@@ -2,14 +2,19 @@ package com.sonetopia.service;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Locale;
 import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.mail.MailException;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,6 +22,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.sonetopia.entity.User;
 import com.sonetopia.model.AuthResponse;
+import com.sonetopia.model.GoogleLoginRequest;
 import com.sonetopia.model.LoginRequest;
 import com.sonetopia.model.RegisterRequest;
 import com.sonetopia.model.ResendVerificationRequest;
@@ -45,6 +51,10 @@ public class AuthService {
 
   @Autowired
   private EmailService emailService;
+
+  @Autowired
+  @Qualifier("googleJwtDecoder")
+  private JwtDecoder googleJwtDecoder;
 
   @Value("${app.email.verification-resend-cooldown-seconds:60}")
   private long verificationResendCooldownSeconds;
@@ -161,11 +171,99 @@ public class AuthService {
     User user = userRepository.findByUsername(request.getUsername())
         .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid username or password"));
 
-    if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+    if (user.getPassword() == null
+        || !passwordEncoder.matches(request.getPassword(), user.getPassword())) {
       throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid username or password");
     }
 
     return buildAuthResponse(user);
+  }
+
+  public AuthResponse loginWithGoogle(GoogleLoginRequest request) {
+    validationService.validate(request);
+
+    Jwt googleToken;
+    try {
+      googleToken = googleJwtDecoder.decode(request.getIdToken());
+    } catch (JwtException exception) {
+      throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid Google token", exception);
+    }
+
+    String googleId = googleToken.getSubject();
+    String email = googleToken.getClaimAsString("email");
+    Boolean emailVerified = googleToken.getClaim("email_verified");
+
+    if (googleId == null || googleId.isBlank()
+        || email == null || email.isBlank()
+        || !Boolean.TRUE.equals(emailVerified)) {
+      throw new ResponseStatusException(
+        HttpStatus.UNAUTHORIZED,
+        "Google account email is not verified"
+      );
+    }
+
+    LocalDateTime now = LocalDateTime.now();
+    User user = userRepository.findByGoogleId(googleId).orElse(null);
+
+    if (user == null) {
+      user = userRepository.findByEmail(email).orElse(null);
+
+      if (user == null) {
+        user = new User();
+        user.setUsername(generateUsername(email));
+        user.setName(resolveName(googleToken, email));
+        user.setEmail(email);
+        user.setStorageUsed(0L);
+        user.setIsAdmin(false);
+        user.setCreatedAt(now);
+      } else if (user.getGoogleId() != null) {
+        throw new ResponseStatusException(
+          HttpStatus.CONFLICT,
+          "Email is already linked to another Google account"
+        );
+      }
+
+      user.setGoogleId(googleId);
+      if (user.getEmailVerifiedAt() == null) {
+        user.setEmailVerifiedAt(now);
+      }
+      user.setUpdatedAt(now);
+      userRepository.save(user);
+    } else if (user.getEmailVerifiedAt() == null) {
+      user.setEmailVerifiedAt(now);
+      user.setUpdatedAt(now);
+      userRepository.save(user);
+    }
+
+    return buildAuthResponse(user);
+  }
+
+  private String generateUsername(String email) {
+    int at = email.indexOf('@');
+    String localPart = at > 0 ? email.substring(0, at) : email;
+    String base = localPart.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
+
+    if (base.length() < 3) {
+      base = "user" + base;
+    }
+    base = base.substring(0, Math.min(base.length(), 40));
+
+    String candidate = base;
+    int suffix = 1;
+    while (userRepository.findByUsername(candidate).isPresent()) {
+      String suffixText = String.valueOf(suffix++);
+      candidate = base.substring(0, Math.min(base.length(), 50 - suffixText.length())) + suffixText;
+    }
+    return candidate;
+  }
+
+  private String resolveName(Jwt googleToken, String email) {
+    String name = googleToken.getClaimAsString("name");
+    if (name == null || name.isBlank()) {
+      int at = email.indexOf('@');
+      name = at > 0 ? email.substring(0, at) : email;
+    }
+    return name.length() > 100 ? name.substring(0, 100) : name;
   }
 
   private AuthResponse buildAuthResponse(User user) {
