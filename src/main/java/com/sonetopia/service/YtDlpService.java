@@ -15,6 +15,7 @@ import java.util.stream.Stream;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -30,6 +31,7 @@ public class YtDlpService {
   private final long timeoutSeconds;
   private final String cookiesPath;
 
+  @Autowired
   public YtDlpService(
       @Value("${spring.yt-dlp.path:yt-dlp}") String executable,
       @Value("${spring.yt-dlp.timeout-seconds:180}") long timeoutSeconds,
@@ -38,6 +40,10 @@ public class YtDlpService {
     this.executable = executable;
     this.timeoutSeconds = timeoutSeconds;
     this.cookiesPath = cookiesPath;
+  }
+
+  public YtDlpService(String executable, long timeoutSeconds) {
+    this(executable, timeoutSeconds, "");
   }
 
   public Path download(String url, Path destinationDirectory, boolean withThumbnail) throws IOException {
