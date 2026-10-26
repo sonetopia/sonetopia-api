@@ -28,13 +28,20 @@ public class YtDlpService {
 
   private final String executable;
   private final long timeoutSeconds;
+  private final String cookiesPath;
 
   public YtDlpService(
       @Value("${spring.yt-dlp.path:yt-dlp}") String executable,
-      @Value("${spring.yt-dlp.timeout-seconds:180}") long timeoutSeconds
+      @Value("${spring.yt-dlp.timeout-seconds:180}") long timeoutSeconds,
+      @Value("${spring.yt-dlp.cookies-path:}") String cookiesPath
   ) {
     this.executable = executable;
     this.timeoutSeconds = timeoutSeconds;
+    this.cookiesPath = cookiesPath;
+  }
+
+  public YtDlpService(String executable, long timeoutSeconds) {
+    this(executable, timeoutSeconds, "");
   }
 
   public Path download(String url, Path destinationDirectory, boolean withThumbnail) throws IOException {
@@ -54,6 +61,10 @@ public class YtDlpService {
     command.add("0");
     command.add("--max-filesize");
     command.add("100M");
+    if (cookiesPath != null && !cookiesPath.isBlank()) {
+      command.add("--cookies");
+      command.add(cookiesPath);
+    }
     command.add("--embed-metadata");
     if (withThumbnail) {
       command.add("--write-thumbnail");
