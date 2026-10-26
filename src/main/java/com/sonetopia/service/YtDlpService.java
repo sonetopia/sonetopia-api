@@ -40,10 +40,6 @@ public class YtDlpService {
     this.cookiesPath = cookiesPath;
   }
 
-  public YtDlpService(String executable, long timeoutSeconds) {
-    this(executable, timeoutSeconds, "");
-  }
-
   public Path download(String url, Path destinationDirectory, boolean withThumbnail) throws IOException {
     validateUrl(url);
     Files.createDirectories(destinationDirectory);
