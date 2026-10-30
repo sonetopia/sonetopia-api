@@ -64,6 +64,9 @@ public class AuthService {
   @Autowired
   private AppleTokenVerifier appleTokenVerifier;
 
+  @Autowired
+  private RefreshTokenService refreshTokenService;
+
   @Value("${app.email.verification-resend-cooldown-seconds:60}")
   private long verificationResendCooldownSeconds;
 
@@ -172,21 +175,30 @@ public class AuthService {
     userRepository.save(user);
   }
 
-  @Transactional(readOnly = true)
+  @Transactional
   public AuthResponse login(LoginRequest request) {
     validationService.validate(request);
 
-    User user = userRepository.findByUsername(request.getUsername())
-        .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid username or password"));
+    String identifier = request.getUsername().trim();
+    User user = userRepository.findByUsername(identifier)
+        .or(() -> userRepository.findByEmailIgnoreCase(identifier))
+        .orElseThrow(() -> new ResponseStatusException(
+          HttpStatus.UNAUTHORIZED,
+          "Invalid username/email or password"
+        ));
 
     if (user.getPassword() == null
         || !passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-      throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid username or password");
+      throw new ResponseStatusException(
+        HttpStatus.UNAUTHORIZED,
+        "Invalid username/email or password"
+      );
     }
 
     return buildAuthResponse(user);
   }
 
+  @Transactional
   public AuthResponse loginWithGoogle(GoogleLoginRequest request) {
     validationService.validate(request);
 
@@ -218,6 +230,7 @@ public class AuthService {
     );
   }
 
+  @Transactional
   public AuthResponse loginWithGithub(GithubLoginRequest request) {
     validationService.validate(request);
 
@@ -231,6 +244,7 @@ public class AuthService {
     );
   }
 
+  @Transactional
   public AuthResponse loginWithApple(AppleLoginRequest request) {
     validationService.validate(request);
 
@@ -253,6 +267,15 @@ public class AuthService {
       identity.email(),
       request.getName()
     );
+  }
+
+  public AuthResponse refresh(String refreshToken) {
+    RefreshTokenService.RotatedToken rotatedToken = refreshTokenService.rotate(refreshToken);
+    return buildAuthResponse(rotatedToken.user(), rotatedToken.refreshToken());
+  }
+
+  public void logout(String refreshToken) {
+    refreshTokenService.revoke(refreshToken);
   }
 
   private AuthResponse loginWithOAuthUser(
@@ -356,10 +379,19 @@ public class AuthService {
   }
 
   private AuthResponse buildAuthResponse(User user) {
+    return buildAuthResponse(user, refreshTokenService.issue(user));
+  }
+
+  private AuthResponse buildAuthResponse(
+      User user,
+      RefreshTokenService.IssuedToken refreshToken
+  ) {
     return AuthResponse.builder()
         .token(jwtService.generateToken(user))
         .tokenType("Bearer")
         .expiresIn(jwtService.getExpirationSeconds())
+        .refreshToken(refreshToken.token())
+        .refreshTokenExpiresIn(refreshToken.expiresInSeconds())
         .user(userService.toUserResponse(user))
         .build();
   }

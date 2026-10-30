@@ -51,15 +51,24 @@ public class SecurityConfig {
 
     CorsConfiguration config = new CorsConfiguration();
 
-    if (origins.contains("*")) {
-      config.setAllowedOriginPatterns(List.of("*"));
-    } else {
-      config.setAllowedOrigins(origins);
+    if (origins.isEmpty() || origins.contains("*")) {
+      throw new IllegalStateException(
+        "CORS_ALLOWED_ORIGINS must list explicit origins because credentials are enabled"
+      );
     }
+
+    config.setAllowedOrigins(origins);
+    config.setAllowCredentials(true);
     config.setAllowedMethods(
       List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
     );
-    config.setAllowedHeaders(List.of("*"));
+    config.setAllowedHeaders(List.of(
+      "Authorization",
+      "Content-Type",
+      "Accept",
+      "Origin",
+      "X-Requested-With"
+    ));
 
     UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
 

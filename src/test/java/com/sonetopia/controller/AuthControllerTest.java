@@ -14,6 +14,7 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.server.ResponseStatusException;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -26,6 +27,7 @@ import java.nio.file.Paths;
 import java.util.UUID;
 
 import jakarta.servlet.DispatcherType;
+import jakarta.servlet.http.Cookie;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.when;
@@ -209,6 +211,134 @@ public class AuthControllerTest {
 
         assertNotNull(response.getData());
         assertNotNull(response.getData().getToken());
+        assertEquals(3600L, response.getData().getExpiresIn());
+        assertEquals(2592000L, response.getData().getRefreshTokenExpiresIn());
+        assertEquals("test", response.getData().getUser().getUsername());
+      });
+  }
+
+  @Test
+  void testLoginSetsHttpOnlyRefreshCookie() throws Exception {
+    LoginRequest request = new LoginRequest("test", "test");
+
+    mockMvc.perform(post("/api/auth/login")
+        .contentType("application/json")
+        .content(objectMapper.writeValueAsString(request))
+      ).andExpectAll(
+        status().isOk(),
+        cookie().httpOnly("refresh_token", true),
+        cookie().maxAge("refresh_token", 2592000),
+        cookie().path("refresh_token", "/api/auth")
+      );
+  }
+
+  @Test
+  void testCorsPreflightAllowsCredentials() throws Exception {
+    String origin = "https://sonetopia.luckyabdillah.com";
+
+    mockMvc.perform(options("/api/auth/login")
+        .header(HttpHeaders.ORIGIN, origin)
+        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST")
+        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "Content-Type")
+      ).andExpectAll(
+        status().isOk(),
+        header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, origin),
+        header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS, "true")
+      );
+  }
+
+  @Test
+  void testRefreshRotatesTokenAndExtendsSession() throws Exception {
+    Cookie firstToken = loginWithCookie("test", "test");
+
+    MvcResult result = mockMvc.perform(post("/api/auth/refresh")
+        .cookie(firstToken)
+      ).andExpectAll(
+        status().isOk()
+      ).andReturn();
+
+    Cookie secondToken = result.getResponse().getCookie("refresh_token");
+    assertNotNull(secondToken);
+    assertNotEquals(firstToken.getValue(), secondToken.getValue());
+
+    WebResponse<AuthResponse> response = objectMapper.readValue(
+      result.getResponse().getContentAsString(),
+      new TypeReference<WebResponse<AuthResponse>>() {}
+    );
+
+    assertNotNull(response.getData().getToken());
+    assertEquals(3600L, response.getData().getExpiresIn());
+    assertEquals(2592000L, response.getData().getRefreshTokenExpiresIn());
+  }
+
+  @Test
+  void testRefreshRejectsReusedTokenAndRevokesFamily() throws Exception {
+    Cookie firstToken = loginWithCookie("test", "test");
+
+    MvcResult result = mockMvc.perform(post("/api/auth/refresh")
+        .cookie(firstToken)
+      ).andExpect(status().isOk()).andReturn();
+
+    Cookie secondToken = result.getResponse().getCookie("refresh_token");
+    assertNotNull(secondToken);
+
+    mockMvc.perform(post("/api/auth/refresh").cookie(firstToken))
+      .andExpect(status().isUnauthorized());
+
+    mockMvc.perform(post("/api/auth/refresh").cookie(secondToken))
+      .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  void testLogoutRevokesRefreshToken() throws Exception {
+    Cookie refreshToken = loginWithCookie("test", "test");
+
+    mockMvc.perform(post("/api/auth/logout").cookie(refreshToken))
+      .andExpect(status().isOk());
+
+    mockMvc.perform(post("/api/auth/refresh").cookie(refreshToken))
+      .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  void testPasswordChangeRevokesRefreshTokens() throws Exception {
+    Cookie refreshToken = loginWithCookie("test", "test");
+    String accessToken = login("test", "test");
+
+    UpdateUserRequest request = UpdateUserRequest.builder()
+        .name("Test User")
+        .username("test")
+        .password("newpassword")
+        .currentPassword("test")
+        .build();
+
+    mockMvc.perform(put("/api/me")
+        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+        .contentType("application/json")
+        .content(objectMapper.writeValueAsString(request))
+      ).andExpect(status().isOk());
+
+    mockMvc.perform(post("/api/auth/refresh").cookie(refreshToken))
+      .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  void testLoginSuccessWithEmail() throws Exception {
+    LoginRequest request = new LoginRequest("TEST@GMAIL.COM", "test");
+
+    mockMvc.perform(post("/api/auth/login")
+        .contentType("application/json")
+        .content(objectMapper.writeValueAsString(request))
+      ).andExpectAll(
+        status().isOk()
+      ).andDo(result -> {
+        WebResponse<AuthResponse> response = objectMapper.readValue(
+          result.getResponse().getContentAsString(),
+          new TypeReference<WebResponse<AuthResponse>>() {}
+        );
+
+        assertNotNull(response.getData());
+        assertNotNull(response.getData().getToken());
         assertEquals("test", response.getData().getUser().getUsername());
       });
   }
@@ -229,7 +359,7 @@ public class AuthControllerTest {
         );
 
         assertNull(response.getData());
-        assertTrue(response.getErrors().contains("Invalid username or password"));
+        assertTrue(response.getErrors().contains("Invalid username/email or password"));
       });
   }
 
@@ -1013,6 +1143,21 @@ public class AuthControllerTest {
     WebResponse<AuthResponse> response = objectMapper.readValue(responseJson, new TypeReference<WebResponse<AuthResponse>>() {});
 
     return response.getData().getToken();
+  }
+
+  private Cookie loginWithCookie(String username, String password) throws Exception {
+    LoginRequest loginRequest = new LoginRequest(username, password);
+
+    Cookie cookie = mockMvc.perform(post("/api/auth/login")
+        .contentType("application/json")
+        .content(objectMapper.writeValueAsString(loginRequest))
+      ).andExpect(status().isOk())
+      .andReturn()
+      .getResponse()
+      .getCookie("refresh_token");
+
+    assertNotNull(cookie);
+    return cookie;
   }
 
   private Jwt googleToken(String subject, String email, boolean emailVerified) {

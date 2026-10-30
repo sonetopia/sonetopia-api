@@ -23,6 +23,7 @@ import tools.jackson.databind.ObjectMapper;
 public class JwtService {
 
   private static final String HMAC_ALGORITHM = "HmacSHA256";
+  private static final String ACCESS_TOKEN_TYPE = "access";
   private static final String EMAIL_VERIFICATION_PURPOSE = "email_verification";
   private static final String ENCODED_HEADER = base64UrlEncode(
     "{\"alg\":\"HS256\",\"typ\":\"JWT\"}".getBytes(StandardCharsets.UTF_8)
@@ -57,6 +58,7 @@ public class JwtService {
     Map<String, Object> claims = new LinkedHashMap<>();
     claims.put("sub", user.getId().toString());
     claims.put("username", user.getUsername());
+    claims.put("type", ACCESS_TOKEN_TYPE);
     if (purpose != null) {
       claims.put("purpose", purpose);
     }
@@ -72,7 +74,7 @@ public class JwtService {
   public UUID extractUserId(String token) {
     Map<String, Object> claims = parseAndValidate(token);
 
-    if (claims.get("purpose") != null) {
+    if (!ACCESS_TOKEN_TYPE.equals(claims.get("type")) || claims.get("purpose") != null) {
       throw new IllegalArgumentException("Invalid token");
     }
 

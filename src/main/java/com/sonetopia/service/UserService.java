@@ -29,6 +29,9 @@ public class UserService {
   @Autowired
   private LocalAudioStorageService localAudioStorageService;
 
+  @Autowired
+  private RefreshTokenService refreshTokenService;
+
   public UserResponse toUserResponse(User user) {
     return UserResponse.builder()
         .id(user.getId())
@@ -86,6 +89,7 @@ public class UserService {
 
     if (changingPassword) {
       currentUser.setPassword(passwordEncoder.encode(request.getPassword()));
+      refreshTokenService.revokeAll(currentUser.getId());
     }
 
     userRepository.save(currentUser);
