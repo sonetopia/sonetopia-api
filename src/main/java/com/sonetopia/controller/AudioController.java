@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.sonetopia.model.WebResponse;
@@ -24,13 +25,18 @@ import com.sonetopia.model.CreateAudioFromTempRequest;
 import com.sonetopia.model.FetchAudioRequest;
 import com.sonetopia.model.FetchedAudioResponse;
 import com.sonetopia.model.UpdateAudioRequest;
+import com.sonetopia.model.SearchResultResponse;
 import com.sonetopia.service.AudioService;
+import com.sonetopia.service.YtDlpService;
 
 @RestController 
 public class AudioController {
 
   @Autowired 
   private AudioService audioService;
+
+  @Autowired
+  private YtDlpService ytDlpService;
 
   @PostMapping(path= "/api/v1/audio", consumes = "multipart/form-data", produces = "application/json")
   public WebResponse<AudioResponse> create(@AuthenticationPrincipal User user, @ModelAttribute CreateAudioRequest request) throws IOException  {
@@ -48,6 +54,12 @@ public class AudioController {
   public WebResponse<FetchedAudioResponse> fetch(@AuthenticationPrincipal User user, @RequestBody FetchAudioRequest request) throws IOException {
     FetchedAudioResponse fetchedAudioResponse = audioService.fetch(request, user);
     return WebResponse.<FetchedAudioResponse>builder().data(fetchedAudioResponse).build();
+  }
+
+  @GetMapping(path = "/api/v1/audio/search", produces = "application/json")
+  public WebResponse<List<SearchResultResponse>> search(@RequestParam("q") String query, @RequestParam(name = "limit", defaultValue = "10") int limit) {
+    List<SearchResultResponse> results = ytDlpService.search(query, limit);
+    return WebResponse.<List<SearchResultResponse>>builder().data(results).build();
   }
 
   @GetMapping (path = "/api/v1/audio/{audioId}", produces = "application/json")
