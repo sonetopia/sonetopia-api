@@ -63,7 +63,10 @@ public class Audio {
   private Long fileSize;
 
   private Integer duration;
-  
+
+  @Column(name = "source_url", length = 2048)
+  private String sourceUrl;
+
   @Column(name = "created_at")
   private LocalDateTime createdAt;
   

@@ -23,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.sonetopia.model.SearchResultResponse;
+import com.sonetopia.model.SearchSource;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -32,9 +33,9 @@ import tools.jackson.databind.json.JsonMapper;
 public class YtDlpService {
 
   private static final Logger logger = LoggerFactory.getLogger(YtDlpService.class);
-  private static final int MAX_SEARCH_LIMIT = 20;
-  private static final int MAX_SEARCH_QUERY_LENGTH = 200;
   private static final long SEARCH_TIMEOUT_SECONDS = 30;
+  // YouTube Music "Songs" filter: drops artist/album/playlist entries that are not fetchable tracks.
+  private static final String MUSIC_SONGS_FILTER = "EgWKAQIIAWoKEAkQChAFEAMQBA%3D%3D";
   private static final JsonMapper JSON = JsonMapper.builder().build();
 
   private final String executable;
@@ -190,56 +191,35 @@ public class YtDlpService {
   }
 
   /**
-   * Searches YouTube Music first, then YouTube, then SoundCloud. A source is skipped when it fails
-   * or returns nothing; the first source with results wins.
+   * Runs one search against a single source and returns up to {@code count} tracks. Throws a 502
+   * {@link ResponseStatusException} when the source fails or times out, so callers can fall back to
+   * another source; an empty list means the source answered with no tracks.
    */
-  public List<SearchResultResponse> search(String query, int limit) {
-    String normalizedQuery = query == null ? "" : query.trim();
-    if (normalizedQuery.isEmpty()) {
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Search query is required");
+  public List<SearchResultResponse> search(SearchSource source, String query, int count) {
+    List<String> command = new ArrayList<>();
+    command.add(executable);
+    command.add("--flat-playlist");
+    command.add("--dump-json");
+    command.add("--no-warnings");
+    command.add("--playlist-end");
+    command.add(String.valueOf(count));
+    if (cookiesPath != null && !cookiesPath.isBlank()) {
+      command.add("--cookies");
+      command.add(cookiesPath);
     }
-    if (normalizedQuery.length() > MAX_SEARCH_QUERY_LENGTH) {
-      throw new ResponseStatusException(
-        HttpStatus.BAD_REQUEST,
-        "Search query must be at most " + MAX_SEARCH_QUERY_LENGTH + " characters"
-      );
-    }
-    int boundedLimit = Math.max(1, Math.min(limit, MAX_SEARCH_LIMIT));
+    command.add(searchTarget(source, query, count));
 
-    boolean anySourceResponded = false;
-    for (SearchSource source : SearchSource.values()) {
-      List<String> command = new ArrayList<>();
-      command.add(executable);
-      command.add("--flat-playlist");
-      command.add("--dump-json");
-      command.add("--no-warnings");
-      command.add("--playlist-end");
-      command.add(String.valueOf(source.fetchCount(boundedLimit)));
-      if (cookiesPath != null && !cookiesPath.isBlank()) {
-        command.add("--cookies");
-        command.add(cookiesPath);
-      }
-      command.add(source.target(normalizedQuery, boundedLimit));
+    String output = runForOutput(command, Math.min(timeoutSeconds, SEARCH_TIMEOUT_SECONDS), source);
+    return parseSearchResults(output, source.label(), count);
+  }
 
-      String output;
-      try {
-        output = runForOutput(command, Math.min(timeoutSeconds, SEARCH_TIMEOUT_SECONDS));
-      } catch (SearchFailedException exception) {
-        logger.warn("yt-dlp search via {} failed: {}", source.label, exception.getMessage());
-        continue;
-      }
-
-      anySourceResponded = true;
-      List<SearchResultResponse> results = parseSearchResults(output, source.label, boundedLimit);
-      if (!results.isEmpty()) {
-        return results;
-      }
-    }
-
-    if (!anySourceResponded) {
-      throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Search is currently unavailable");
-    }
-    return List.of();
+  private static String searchTarget(SearchSource source, String query, int count) {
+    return switch (source) {
+      case YOUTUBE_MUSIC -> "https://music.youtube.com/search?q="
+        + URLEncoder.encode(query, StandardCharsets.UTF_8) + "&sp=" + MUSIC_SONGS_FILTER;
+      case YOUTUBE -> "ytsearch" + count + ":" + query;
+      case SOUNDCLOUD -> "scsearch" + count + ":" + query;
+    };
   }
 
   static List<SearchResultResponse> parseSearchResults(String output, String source, int limit) {
@@ -323,7 +303,7 @@ public class YtDlpService {
     return null;
   }
 
-  private String runForOutput(List<String> command, long timeout) {
+  private String runForOutput(List<String> command, long timeout, SearchSource source) {
     Process process;
     try {
       process = new ProcessBuilder(command)
@@ -356,57 +336,14 @@ public class YtDlpService {
 
     if (!finished) {
       process.destroyForcibly();
-      throw new SearchFailedException("timed out after " + timeout + "s");
+      logger.warn("yt-dlp search via {} timed out after {}s", source.label(), timeout);
+      throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Search source is unavailable");
     }
     if (process.exitValue() != 0) {
-      throw new SearchFailedException("exit code " + process.exitValue());
+      logger.warn("yt-dlp search via {} failed with exit code {}", source.label(), process.exitValue());
+      throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Search source is unavailable");
     }
     return output.join();
-  }
-
-  private static final class SearchFailedException extends RuntimeException {
-    SearchFailedException(String message) {
-      super(message);
-    }
-  }
-
-  private enum SearchSource {
-    YOUTUBE_MUSIC("youtube_music") {
-      @Override
-      String target(String query, int limit) {
-        return "https://music.youtube.com/search?q=" + URLEncoder.encode(query, StandardCharsets.UTF_8);
-      }
-
-      // Music search includes non-track entries that get filtered out, so over-fetch.
-      @Override
-      int fetchCount(int limit) {
-        return Math.min(limit * 2, MAX_SEARCH_LIMIT * 2);
-      }
-    },
-    YOUTUBE("youtube") {
-      @Override
-      String target(String query, int limit) {
-        return "ytsearch" + limit + ":" + query;
-      }
-    },
-    SOUNDCLOUD("soundcloud") {
-      @Override
-      String target(String query, int limit) {
-        return "scsearch" + limit + ":" + query;
-      }
-    };
-
-    final String label;
-
-    SearchSource(String label) {
-      this.label = label;
-    }
-
-    abstract String target(String query, int limit);
-
-    int fetchCount(int limit) {
-      return limit;
-    }
   }
 
   private static boolean isAudioFile(Path file) {

@@ -25,9 +25,9 @@ import com.sonetopia.model.CreateAudioFromTempRequest;
 import com.sonetopia.model.FetchAudioRequest;
 import com.sonetopia.model.FetchedAudioResponse;
 import com.sonetopia.model.UpdateAudioRequest;
-import com.sonetopia.model.SearchResultResponse;
+import com.sonetopia.model.SearchResponse;
 import com.sonetopia.service.AudioService;
-import com.sonetopia.service.YtDlpService;
+import com.sonetopia.service.SearchService;
 
 @RestController 
 public class AudioController {
@@ -36,7 +36,7 @@ public class AudioController {
   private AudioService audioService;
 
   @Autowired
-  private YtDlpService ytDlpService;
+  private SearchService searchService;
 
   @PostMapping(path= "/api/v1/audio", consumes = "multipart/form-data", produces = "application/json")
   public WebResponse<AudioResponse> create(@AuthenticationPrincipal User user, @ModelAttribute CreateAudioRequest request) throws IOException  {
@@ -57,9 +57,15 @@ public class AudioController {
   }
 
   @GetMapping(path = "/api/v1/audio/search", produces = "application/json")
-  public WebResponse<List<SearchResultResponse>> search(@RequestParam("q") String query, @RequestParam(name = "limit", defaultValue = "10") int limit) {
-    List<SearchResultResponse> results = ytDlpService.search(query, limit);
-    return WebResponse.<List<SearchResultResponse>>builder().data(results).build();
+  public WebResponse<SearchResponse> search(
+      @AuthenticationPrincipal User user,
+      @RequestParam(name = "q", defaultValue = "") String query,
+      @RequestParam(name = "limit", defaultValue = "10") int limit,
+      @RequestParam(name = "offset", defaultValue = "0") int offset,
+      @RequestParam(name = "source", required = false) String source
+  ) {
+    SearchResponse searchResponse = searchService.search(user, query, source, limit, offset);
+    return WebResponse.<SearchResponse>builder().data(searchResponse).build();
   }
 
   @GetMapping (path = "/api/v1/audio/{audioId}", produces = "application/json")

@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.sonetopia.model.SearchResultResponse;
+import com.sonetopia.model.SearchSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -25,21 +26,11 @@ class YtDlpServiceTest {
   }
 
   @Test
-  void searchRejectsBlankQuery() {
-    assertThrows(ResponseStatusException.class, () -> ytDlpService.search("   ", 5));
-  }
-
-  @Test
-  void searchRejectsTooLongQuery() {
-    assertThrows(ResponseStatusException.class, () -> ytDlpService.search("a".repeat(201), 5));
-  }
-
-  @Test
   void searchFailsWhenExecutableMissing() {
     YtDlpService missing = new YtDlpService("yt-dlp-does-not-exist", 5);
     ResponseStatusException exception = assertThrows(
       ResponseStatusException.class,
-      () -> missing.search("coldplay", 5)
+      () -> missing.search(SearchSource.YOUTUBE, "coldplay", 5)
     );
     assertEquals(500, exception.getStatusCode().value());
   }
