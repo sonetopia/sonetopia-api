@@ -156,6 +156,11 @@ public class AudioService {
         );
       }
 
+      String sourceUrl = SourceUrls.canonicalize(request.getUrl());
+      if (sourceUrl != null) {
+        localAudioStorageService.writeTempSourceUrl(user.getId(), tempId, sourceUrl);
+      }
+
       Path thumbnailPath = localAudioStorageService
         .resolveTempThumbnail(user.getId(), tempId)
         .orElse(null);
@@ -200,6 +205,12 @@ public class AudioService {
     audio.setUpdatedAt(LocalDateTime.now());
     audio.setMimeType(mimeTypeFor(tempAudioPath));
     audio.setFileSize(audioSize);
+    audio.setSourceUrl(
+      localAudioStorageService
+        .readTempSourceUrl(user.getId(), request.getTempId())
+        .map(SourceUrls::canonicalize)
+        .orElse(null)
+    );
 
     try {
       var promotedAudio = localAudioStorageService.promoteTempAudio(

@@ -275,6 +275,73 @@ public class AudioControllerTest {
   }
 
   @Test
+  void testCreateAudioFromTempStoresSourceUrl() throws Exception {
+    User user = userRepository.findByUsername("test").orElseThrow();
+    UUID tempId = UUID.randomUUID();
+    Path tempDirectory = localAudioStorageService.createTempAudioDirectory(user.getId(), tempId);
+
+    try (InputStream inputStream = new ClassPathResource("audio/sempurna.mp3").getInputStream()) {
+      Files.copy(inputStream, tempDirectory.resolve("audio.mp3"));
+    }
+    localAudioStorageService.writeTempSourceUrl(
+      user.getId(),
+      tempId,
+      "https://www.youtube.com/watch?v=9qnqYL0eNNI"
+    );
+
+    CreateAudioFromTempRequest request = CreateAudioFromTempRequest.builder()
+      .tempId(tempId)
+      .title("Imported Audio")
+      .type("music")
+      .build();
+
+    String responseJson = perform(
+      post("/api/v1/audio")
+        .contentType("application/json")
+        .content(objectMapper.writeValueAsString(request))
+      ).andExpect(status().isOk())
+      .andReturn()
+      .getResponse()
+      .getContentAsString();
+
+    WebResponse<AudioResponse> webResponse = objectMapper.readValue(responseJson, new TypeReference<WebResponse<AudioResponse>>() {});
+
+    Audio savedAudio = audioRepository.findById(webResponse.getData().getId()).orElseThrow();
+    assertEquals("https://www.youtube.com/watch?v=9qnqYL0eNNI", savedAudio.getSourceUrl());
+    assertFalse(Files.exists(tempDirectory));
+  }
+
+  @Test
+  void testCreateAudioFromTempWithoutSourceUrlLeavesItEmpty() throws Exception {
+    User user = userRepository.findByUsername("test").orElseThrow();
+    UUID tempId = UUID.randomUUID();
+    Path tempDirectory = localAudioStorageService.createTempAudioDirectory(user.getId(), tempId);
+
+    try (InputStream inputStream = new ClassPathResource("audio/sempurna.mp3").getInputStream()) {
+      Files.copy(inputStream, tempDirectory.resolve("audio.mp3"));
+    }
+
+    CreateAudioFromTempRequest request = CreateAudioFromTempRequest.builder()
+      .tempId(tempId)
+      .title("Imported Audio")
+      .type("music")
+      .build();
+
+    String responseJson = perform(
+      post("/api/v1/audio")
+        .contentType("application/json")
+        .content(objectMapper.writeValueAsString(request))
+      ).andExpect(status().isOk())
+      .andReturn()
+      .getResponse()
+      .getContentAsString();
+
+    WebResponse<AudioResponse> webResponse = objectMapper.readValue(responseJson, new TypeReference<WebResponse<AudioResponse>>() {});
+
+    assertNull(audioRepository.findById(webResponse.getData().getId()).orElseThrow().getSourceUrl());
+  }
+
+  @Test
   void testCreateAudioFromTempWithThumbnail() throws Exception {
     User user = userRepository.findByUsername("test").orElseThrow();
     UUID tempId = UUID.randomUUID();

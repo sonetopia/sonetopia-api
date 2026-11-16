@@ -1,5 +1,6 @@
 package com.sonetopia.repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -15,4 +16,8 @@ public interface AudioRepository extends JpaRepository<Audio, UUID>, JpaSpecific
   Optional<Audio> findByIdAndUser(UUID id, User user);
   
   List<Audio> findByUser(User user);
+
+  List<Audio> findByUserAndSourceUrlIn(User user, Collection<String> sourceUrls);
+
+  List<Audio> findBySourceUrlIsNull();
 }

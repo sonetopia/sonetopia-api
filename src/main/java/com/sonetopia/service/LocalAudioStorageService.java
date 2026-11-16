@@ -39,6 +39,7 @@ import com.sonetopia.repository.AudioRepository;
 public class LocalAudioStorageService implements AudioStorageService {
 
   private static final String TEMP_DIRECTORY = "temp";
+  private static final String TEMP_SOURCE_URL_FILE = "source-url.txt";
   private static final long MAX_COVER_BYTES = 1024L * 1024;
 
   private final Path rootLocation;
@@ -110,6 +111,29 @@ public class LocalAudioStorageService implements AudioStorageService {
     Path directory = tempDirectory(userId, tempId);
     Files.createDirectories(directory);
     return directory;
+  }
+
+  /** Remembers where a fetched audio came from, so it can be saved with the audio later. */
+  public void writeTempSourceUrl(UUID userId, UUID tempId, String sourceUrl) throws IOException {
+    Files.writeString(
+      tempDirectory(userId, tempId).resolve(TEMP_SOURCE_URL_FILE),
+      sourceUrl,
+      StandardCharsets.UTF_8
+    );
+  }
+
+  public Optional<String> readTempSourceUrl(UUID userId, UUID tempId) {
+    Path file = tempDirectory(userId, tempId).resolve(TEMP_SOURCE_URL_FILE);
+    if (!Files.isRegularFile(file)) {
+      return Optional.empty();
+    }
+
+    try {
+      String value = Files.readString(file, StandardCharsets.UTF_8).trim();
+      return value.isEmpty() ? Optional.empty() : Optional.of(value);
+    } catch (IOException exception) {
+      return Optional.empty();
+    }
   }
 
   public Path resolveTempAudio(UUID userId, UUID tempId) {
